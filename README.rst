@@ -28,8 +28,11 @@ Compiling
 
    ::
 
+      rem: fetch the code.
       git clone git@github.com:AndreLouisCaron/fio.git
       cd fio
+
+      rem: fetch its dependencies.
       git submodule init
       git submodule update
 
@@ -37,6 +40,7 @@ Compiling
 
    ::
 
+      rem: generate build scripts.
       mkdir work && cd work
       cmake -G "NMake Makefiles" ..
 
@@ -44,6 +48,7 @@ Compiling
 
    ::
 
+      rem: build all targets.
       nmake
 
 .. _`Microsoft Visual Studio`: http://www.microsoft.com/visualstudio/en-us

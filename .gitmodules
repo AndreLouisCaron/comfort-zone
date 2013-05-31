@@ -1,0 +1,3 @@
+[submodule "libs/w32"]
+	path = libs/w32
+	url = git@github.com:AndreLouisCaron/w32.git
