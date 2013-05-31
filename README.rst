@@ -15,6 +15,13 @@ combine the efficiency of asynchronous I/O with the simplicity of
 synchronous/blocking I/O programs.
 
 
+Status
+======
+
+The library currently serves as a proof of concept, is in active development
+and should be considered to tbe *higlhly experimental*.
+
+
 Compiling
 =========
 
