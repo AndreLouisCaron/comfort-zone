@@ -22,6 +22,7 @@ It take its name from the following definition of "comfort zone":
 
 So basically it aims at providing an I/O toolkit for C++ with the following
 qualities:
+
 - **simple**: understands that mixing callbacks, mutable state and manual
   memory management is not for the faint of heart (even highly experienced
   programmers have a hard time getting it right);
