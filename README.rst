@@ -50,11 +50,14 @@ Features
 ========
 
 Key features include:
+
 - uniform API for dealing with:
+
   * asynchronous network I/O;
   * asynchronous file I/O;
   * synchronous pipe & standard input/output/error I/O;
   * jobs, processes, threads,  mutexes, semaphores;
+
 - coroutine-based parallel processing for effortless lock-free programming.
 
 
