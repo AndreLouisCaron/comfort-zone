@@ -30,26 +30,26 @@
 
 #include "trace.hpp"
 
-namespace fio {
+namespace cz {
 
     Hub::Hub ()
         : myMaster(w32::mt::start_fiber())
         , mySlaves()
         , myQueue()
     {
-        fio_trace("+hub(0x" << this << ")");
-        fio_trace("@hub(0x" << this << ")");
+        cz_trace("+hub(0x" << this << ")");
+        cz_trace("@hub(0x" << this << ")");
     }
 
     Hub::~Hub ()
     {
         if (!mySlaves.empty()) {
-            fio_trace("?hub(): slaves still alive.");
+            cz_trace("?hub(): slaves still alive.");
         }
         if (!myQueue.empty()) {
-            fio_trace("?hub(): slaves still scheduled.");
+            cz_trace("?hub(): slaves still scheduled.");
         }
-        fio_trace("-hub(0x" << this << ")");
+        cz_trace("-hub(0x" << this << ")");
     }
 
     bool Hub::running () const
@@ -90,19 +90,19 @@ namespace fio {
         }
         Slave *const slave = myQueue.front(); myQueue.pop_front();
         if (!exists(slave)) {
-            fio_trace("?hub(0x" << this << "): unknown slave(0x" << slave << ").");
+            cz_trace("?hub(0x" << this << "): unknown slave(0x" << slave << ").");
             return;
         }
 
         // Have it run until it passes control back to us.
         slave->resume();
 
-        fio_trace("@hub(0x" << this << ")");
+        cz_trace("@hub(0x" << this << ")");
 
         // Check if the fiber has just completed execution.
         if (slave->myTask.closing()) {
             // TODO: check for exception in fiber.
-            fio_trace("-slave(0x" << slave->myFiber.handle() << ")");
+            cz_trace("-slave(0x" << slave->myFiber.handle() << ")");
 
             // Mark the task as collected and kill the slave.
             slave->myTask.myState = Task::Dead;
@@ -146,7 +146,7 @@ namespace fio {
         : mySlave(0)
         , myState(Offline)
     {
-        fio_trace("+task(0x" << this << ")");
+        cz_trace("+task(0x" << this << ")");
     }
 
     Task::~Task ()
@@ -156,14 +156,14 @@ namespace fio {
         //       as necessary.
 
         if (mySlave != 0) {
-            fio_trace("?task(0x" << this << "): slave is still alive.");
+            cz_trace("?task(0x" << this << "): slave is still alive.");
         }
 
         if (spawned() && !dead()) {
-            fio_trace("?task(0x" << this << "): task not completed.");
+            cz_trace("?task(0x" << this << "): task not completed.");
         }
 
-        fio_trace("-task(0x" << this << ")");
+        cz_trace("-task(0x" << this << ")");
     }
 
     void Task::start (Hub::Slave * slave)
@@ -218,7 +218,7 @@ namespace fio {
         , myTask(task)
         , myFiber(w32::mt::Fiber::function<&Slave::entry>(), this)
     {
-        fio_trace("+slave(0x" << myFiber.handle() << ")");
+        cz_trace("+slave(0x" << myFiber.handle() << ")");
     }
 
 #ifdef _MSC_VER
@@ -254,7 +254,7 @@ namespace fio {
         Slave& self = *static_cast<Slave*>(context);
 
         // Alive for the first time.
-        fio_trace("@slave(0x" << self.myFiber.handle() << ")");
+        cz_trace("@slave(0x" << self.myFiber.handle() << ")");
 
         // Enter application code.
         { const Task::Online _(self.myTask, self);
@@ -262,7 +262,7 @@ namespace fio {
         }
 
         // Just completed execution.
-        fio_trace("!slave(0x" << self.myFiber.handle() << ")");
+        cz_trace("!slave(0x" << self.myFiber.handle() << ")");
 
         // Let the application know that the hub has one less slave.
         self.myHub.forget(&self);
@@ -276,7 +276,7 @@ namespace fio {
         // hub, even if it is accidentally resumed after it has supposedly
         // completed.
         while (true) {
-            fio_trace("?slave(0x" << self.myFiber.handle() << "): already dead!");
+            cz_trace("?slave(0x" << self.myFiber.handle() << "): already dead!");
             self.myHub.resume();
         }
     }
@@ -297,7 +297,7 @@ namespace fio {
         // control to the hub until it's ready to resume us.
         myHub.schedule(*this), myHub.resume();
 
-        fio_trace("@slave(0x" << myFiber.handle() << ")");
+        cz_trace("@slave(0x" << myFiber.handle() << ")");
     }
 
 }

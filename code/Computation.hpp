@@ -1,5 +1,5 @@
-#ifndef _fio_Computation_hpp__
-#define _fio_Computation_hpp__
+#ifndef _cz_Computation_hpp__
+#define _cz_Computation_hpp__
 
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
@@ -30,7 +30,7 @@
 #include "Engine.hpp"
 #include "Request.hpp"
 
-namespace fio {
+namespace cz {
 
     class Engine;
 
@@ -65,4 +65,4 @@ namespace fio {
 
 }
 
-#endif /* _fio_Computation_hpp__ */
+#endif /* _cz_Computation_hpp__ */

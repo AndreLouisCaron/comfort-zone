@@ -1,5 +1,5 @@
-#ifndef _fio_Engine_hpp__
-#define _fio_Engine_hpp__
+#ifndef _cz_Engine_hpp__
+#define _cz_Engine_hpp__
 
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
@@ -40,7 +40,7 @@
 
 #include <list>
 
-namespace fio {
+namespace cz {
 
     class BlockingReader;
     class BlockingWriter;
@@ -65,8 +65,8 @@ namespace fio {
      * @code
      *  int main (int, char **)
      *  {
-     *    fio::Hub hub;
-     *    fio::Engine engine(hub);
+     *    cz::Hub hub;
+     *    cz::Engine engine(hub);
      *
      *    // Start initial fibers (sockets listeners, etc.).
      *    // ...
@@ -295,4 +295,4 @@ namespace fio {
 
 }
 
-#endif /* _fio_Engine_hpp__ */
+#endif /* _cz_Engine_hpp__ */

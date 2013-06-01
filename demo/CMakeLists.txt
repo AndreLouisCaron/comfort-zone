@@ -31,10 +31,10 @@ set(demo_sources
 )
 set(demo_libraries
   ${w32_libraries}
-  fio
+  comfort-zone
 
   # TODO: make this part of ${w32_libraries}.
-  mswsock.lib
+  mswsock
 )
 
 add_executable(demo

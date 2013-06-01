@@ -1,5 +1,5 @@
-#ifndef _fio_FileReader_hpp__
-#define _fio_FileReader_hpp__
+#ifndef _cz_FileReader_hpp__
+#define _cz_FileReader_hpp__
 
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
@@ -33,7 +33,7 @@
 #include "Request.hpp"
 #include "Stream.hpp"
 
-namespace fio {
+namespace cz {
 
     class Engine;
 
@@ -87,4 +87,4 @@ namespace fio {
 
 }
 
-#endif /* _fio_FileReader_hpp__ */
+#endif /* _cz_FileReader_hpp__ */

@@ -1,5 +1,5 @@
-#ifndef _fio_Hub_hpp__
-#define _fio_Hub_hpp__
+#ifndef _cz_Hub_hpp__
+#define _cz_Hub_hpp__
 
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
@@ -33,7 +33,7 @@
 #include <deque>
 #include <set>
 
-namespace fio {
+namespace cz {
 
     class Hub;
     class Task;
@@ -269,4 +269,4 @@ namespace fio {
 
 }
 
-#endif /* _fio_Hub_hpp__ */
+#endif /* _cz_Hub_hpp__ */

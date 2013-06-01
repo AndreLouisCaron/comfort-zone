@@ -1,5 +1,5 @@
-#ifndef _fio_Request_hpp__
-#define _fio_Request_hpp__
+#ifndef _cz_Request_hpp__
+#define _cz_Request_hpp__
 
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
@@ -33,7 +33,7 @@
 
 #include "Hub.hpp"
 
-namespace fio {
+namespace cz {
 
     class Engine;
 
@@ -137,4 +137,4 @@ namespace fio {
 
 }
 
-#endif /* _fio_Request_hpp__ */
+#endif /* _cz_Request_hpp__ */

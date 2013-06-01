@@ -30,7 +30,7 @@
 
 #include "trace.hpp"
 
-namespace fio {
+namespace cz {
 
     w32::tp::Work::Callback Request::work_callback ()
     {
@@ -54,12 +54,12 @@ namespace fio {
         ::ZeroMemory(&myData, sizeof(myData));
         myData.request = this;
 
-        fio_trace("+request(0x" << this << ")");
+        cz_trace("+request(0x" << this << ")");
     }
 
     Request::~Request ()
     {
-        fio_trace("-request(0x" << this << ")");
+        cz_trace("-request(0x" << this << ")");
 
         myData.request = 0;
         ::ZeroMemory(&myData, sizeof(myData));
@@ -77,25 +77,25 @@ namespace fio {
 
     void Request::start ()
     {
-        fio_trace("*request(0x" << this << "): start");
+        cz_trace("*request(0x" << this << "): start");
         myData.Internal = STATUS_PENDING;
     }
 
     void Request::close ()
     {
-        fio_trace("*request(0x" << this << "): close");
+        cz_trace("*request(0x" << this << "): close");
         myData.Internal = STATUS_WAIT_0;
     }
 
     bool Request::ready () const
     {
-        fio_trace("*request(0x" << this << "): ready");
+        cz_trace("*request(0x" << this << "): ready");
         return (HasOverlappedIoCompleted(&myData));
     }
 
     void Request::reset ()
     {
-        fio_trace("*request(0x" << this << "): reset");
+        cz_trace("*request(0x" << this << "): reset");
         ::ZeroMemory(&myData, sizeof(myData));
         myData.request = this;
     }
@@ -112,12 +112,21 @@ namespace fio {
 
     void Request::report_completion (w32::dword size)
     {
-        fio_trace("!request(0x" << this << ")");
+        cz_trace("!request(0x" << this << ")");
         myEngine.complete_request(*this, &myEngine, size);
     }
 
     void Request::execute_computation (w32::tp::Hints& hints)
     {
+        // Note: this callback executes in a thread from the thread pool.
+        //       Since there is only one thread is writing to the `Request`
+        //       object and the reading task is suspended, synchronization is
+        //       implicit.
+
+        // Note: the computation is require to guard against concurrent access
+        //       to shared resources and cannot interact with the hub, so there
+        //       is no additional synchronization to perform.
+
         Computation& computation = *static_cast<Computation*>(myContext);
 
         // Let the system know if we intend to block on this for a while.
@@ -125,29 +134,41 @@ namespace fio {
             hints.may_run_long();
         }
 
-        // Run computation...
+        // Run computation.
         try {
             computation.execute();
         }
         catch (...) {
+            cz_trace("?request(0x" << this << ") error during computaion.");
             // TODO: report error in completion notification!
         }
 
-        // Mark the request as completed.
+        // Mark the request as completed.  This ensures that the slave can
+        // correctly use the `ready()` method to determine if this operation
+        // (among others) has completed.
         close();
 
-        // Send hub a completion notification!
+        // Send hub a completion notification.  This will unblock the hub and
+        // allow it to resume the slave that initiated the wait request.
         report_completion();
     }
 
     void Request::release_wait_client (w32::tp::Hints& hints)
     {
-        fio_trace("*request(0x" << this << ") completing request.");
+        // Note: this callback executes in a thread from the thread pool.
+        //       Since there is only one thread is writing to the `Request`
+        //       object and the reading task is suspended, synchronization is
+        //       implicit.
 
-        // Mark the request as completed.
+        cz_trace("*request(0x" << this << ") completing request.");
+
+        // Mark the request as completed.  This ensures that the slave can
+        // correctly use the `ready()` method to determine if this operation
+        // (among others) has completed.
         close();
 
-        // Send hub a completion notification!
+        // Send hub a completion notification.  This will unblock the hub and
+        // allow it to resume the slave that initiated the wait request.
         report_completion();
     }
 

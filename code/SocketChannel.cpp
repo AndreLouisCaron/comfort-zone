@@ -48,11 +48,11 @@ namespace {
     // Create a bound, unconnected stream socket.
     w32::net::StreamSocket create_socket (w32::net::ipv4::EndPoint host)
     {
-        fio_trace(" >> Creating socket.");
+        cz_trace(" >> Creating socket.");
 
         w32::net::tcp::Stream stream(create_socket());
 
-        fio_trace(" >> Binding to local address.");
+        cz_trace(" >> Binding to local address.");
 
         const ::BOOL result = ::bind(stream.handle(), host.raw(), host.size());
         if (result == SOCKET_ERROR)
@@ -66,7 +66,7 @@ namespace {
 
 }
 
-namespace fio {
+namespace cz {
 
     SocketChannel::SocketChannel (Engine& engine,
                                   w32::net::StreamSocket& stream,
@@ -140,7 +140,7 @@ namespace fio {
         w32::net::tcp::Stream::ConnectEx connect_ex =
             w32::net::tcp::Stream(myStream.handle()).connect_ex();
 
-        fio_trace(" >> Starting connect request.");
+        cz_trace(" >> Starting connect request.");
 
         // Start the asynchronous connection request.
         const ::BOOL result = connect_ex(myStream.handle(),
@@ -170,16 +170,16 @@ namespace fio {
 
         // Connect requests can be cancelled :-(
         if (notification.aborted()) {
-            fio_trace(" >> Connect request cancelled.");
+            cz_trace(" >> Connect request cancelled.");
             return (0);
         }
 
         // Propagate I/O exception to the caller if necessary.
         notification.report_error();
 
-        fio_trace(" >> Connected!");
-        fio_trace(" >> Host: " << myHost);
-        fio_trace(" >> Peer: " << myPeer);
+        cz_trace(" >> Connected!");
+        cz_trace(" >> Host: " << myHost);
+        cz_trace(" >> Peer: " << myPeer);
 
         // Patch socket for shutdown() and others to work as expected.
         const int result = ::setsockopt(myStream.handle(), SOL_SOCKET,

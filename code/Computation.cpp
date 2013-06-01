@@ -26,7 +26,7 @@
 
 #include "Computation.hpp"
 
-namespace fio {
+namespace cz {
 
     Computation::Computation (bool bounded)
         : myBounded(bounded)

@@ -1,5 +1,5 @@
-#ifndef _fio_Listener_hpp__
-#define _fio_Listener_hpp__
+#ifndef _cz_Listener_hpp__
+#define _cz_Listener_hpp__
 
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
@@ -31,7 +31,7 @@
 #include "Request.hpp"
 #include <w32.net.hpp>
 
-namespace fio {
+namespace cz {
 
     class Engine;
     class SocketChannel;
@@ -108,4 +108,4 @@ namespace fio {
 
 }
 
-#endif /* _fio_Listener_hpp__ */
+#endif /* _cz_Listener_hpp__ */

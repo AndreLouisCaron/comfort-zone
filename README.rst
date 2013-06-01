@@ -1,6 +1,6 @@
-==========================
-  `fio`: Fiber-based I/O
-==========================
+===============================================
+  `comfort-zone`: C++ I/O toolkit for Windows
+===============================================
 :authors:
    André Caron
 :contact: andre.l.caron@gmail.com
@@ -9,10 +9,33 @@
 Description
 ===========
 
-This library is an I/O framework for Windows.  It is based on strategic use of
+This library is an I/O toolkit for Windows.  It is based on strategic use of
 fibers (userspace threads with cooperative scheduling), which allows it to
 combine the efficiency of asynchronous I/O with the simplicity of
 synchronous/blocking I/O programs.
+
+It take its name from the following definition of "comfort zone":
+
+   The comfort zone is a behavioural state within which a person operates in an
+   anxiety-neutral condition, using a limited set of behaviours to deliver a
+   steady level of performance, usually without a sense of risk.
+
+So basically it aims at providing an I/O toolkit for C++ with the following
+qualities:
+- **simple**: understands that mixing callbacks, mutable state and manual
+  memory management is not for the faint of heart (even highly experienced
+  programmers have a hard time getting it right);
+- **complete**: understands that you need to do more than just asynchronous I/O
+  on sockets and that _real_ server programs manipulate files, pipes,
+  processes, etc.;
+- **uniform**: understands that you don't want to have to understand special
+  cases for each type of I/O device you're dealing with;
+- **efficient** understands that subpar performance is never acceptable, most
+  programs grow into new situations that shouldn't require a complete rewrite
+  to change the I/O toolkit.
+
+Basically, the I/O toolkit makes sure you deliver the best performance while
+staying in your comfort zone.
 
 
 Status
@@ -20,6 +43,18 @@ Status
 
 The library currently serves as a proof of concept, is in active development
 and should be considered to tbe *higlhly experimental*.
+
+
+Features
+========
+
+Key features include:
+- uniform API for dealing with:
+  * asynchronous network I/O;
+  * asynchronous file I/O;
+  * synchronous pipe & standard input/output/error I/O;
+  * jobs, processes, threads,  mutexes, semaphores;
+- coroutine-based parallel processing for effortless lock-free programming.
 
 
 Compiling
@@ -36,8 +71,8 @@ Compiling
    ::
 
       rem: fetch the code.
-      git clone git@github.com:AndreLouisCaron/fio.git
-      cd fio
+      git clone git@github.com:AndreLouisCaron/comfort-zone.git
+      cd comfort-zone
 
       rem: fetch its dependencies.
       git submodule init
@@ -49,7 +84,10 @@ Compiling
 
       rem: generate build scripts.
       mkdir work && cd work
-      cmake -G "NMake Makefiles" ..
+      cmake .. -G "NMake Makefiles"
+
+   You can add the ``-DFIO_TRACE=ON`` option to enable logging of context
+   switches, I/O operations and other key elements in execution.
 
 #. Compile the program.
 

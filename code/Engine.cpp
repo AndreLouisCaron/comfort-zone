@@ -1,6 +1,6 @@
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
 // met:
@@ -35,7 +35,7 @@
 
 #include "trace.hpp"
 
-namespace fio {
+namespace cz {
 
     Engine::Engine (Hub& hub)
         : myHub(hub)
@@ -43,12 +43,12 @@ namespace fio {
         , myThreadPool()
         , myThreadPoolQueue(myThreadPool)
     {
-        fio_trace("+engine(0x" << this << ")");
+        cz_trace("+engine(0x" << this << ")");
     }
 
     Engine::~Engine ()
     {
-        fio_trace("-engine(0x" << this << ")");
+        cz_trace("-engine(0x" << this << ")");
     }
 
     w32::io::CompletionPort& Engine::completion_port ()
@@ -71,17 +71,17 @@ namespace fio {
         // Let's get paranoid and verify that the engine doesn't receive
         // notifications adressed to another engine.
         if (notification.handler<Engine>() != this) {
-            fio_trace("?engine(0x" << this << "): received notification for engine(0x" << notification.handler<Engine>() << ").");
+            cz_trace("?engine(0x" << this << "): received notification for engine(0x" << notification.handler<Engine>() << ").");
         }
 
         // Access the asynchronous request object.
         if (!notification.transfer()) {
-            fio_trace("?engine(): empty notification!");
+            cz_trace("?engine(): empty notification!");
             // ... failed transfer, hub exiting, bug!?
         }
         Request *const request = static_cast<Request::Data*>
             (&notification.transfer()->data())->request;
-        fio_trace(">request(0x" << request << ")");
+        cz_trace(">request(0x" << request << ")");
 
         // Store the notification for use by the initiating fiber.
         request->myNotification = notification;
@@ -297,7 +297,7 @@ namespace fio {
     {
         if (!myRequest.ready())
         {
-            fio_trace("?request(0x" << &myRequest << ") request incomplete.");
+            cz_trace("?request(0x" << &myRequest << ") request incomplete.");
             // TODO: log possible bug.
             myJob.wait();
         }
@@ -337,7 +337,7 @@ namespace fio {
     {
         if (!myRequest.ready())
         {
-            fio_trace("?request(0x" << &myRequest << ") request incomplete.");
+            cz_trace("?request(0x" << &myRequest << ") request incomplete.");
             // TODO: log possible bug.
             myJob.wait();
         }

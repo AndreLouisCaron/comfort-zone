@@ -33,7 +33,7 @@
 namespace {
 
     class BlockingRead :
-        public fio::Computation
+        public cz::Computation
     {
         w32::io::InputStream& myStream;
         void *const myData;
@@ -54,7 +54,7 @@ namespace {
     protected:
         virtual void execute ()
         {
-            fio_trace(" >> Reading " << mySize << " bytes from blocking stream.");
+            cz_trace(" >> Reading " << mySize << " bytes from blocking stream.");
 
             // For a stream like the standard input, the application needs to
             // react to each line as soon as it is received, but the buffer may
@@ -66,7 +66,7 @@ namespace {
 
 }
 
-namespace fio {
+namespace cz {
 
     BlockingReader::BlockingReader (Engine& engine,
                                     w32::io::InputStream& stream)

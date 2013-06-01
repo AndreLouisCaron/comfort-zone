@@ -33,7 +33,7 @@
 namespace {
 
     class BlockingWrite :
-        public fio::Computation
+        public cz::Computation
     {
         w32::io::OutputStream& myStream;
         const char * myData;
@@ -57,7 +57,7 @@ namespace {
         {
             // Consume everything while we're in the background thread!
             while (myUsed < mySize) {
-                fio_trace(" >> Writing " << (mySize-myUsed) << " bytes to blocking stream.");
+                cz_trace(" >> Writing " << (mySize-myUsed) << " bytes to blocking stream.");
                 myUsed += myStream.put(myData+myUsed, mySize-myUsed);
             }
         }
@@ -65,7 +65,7 @@ namespace {
 
 }
 
-namespace fio {
+namespace cz {
 
     BlockingWriter::BlockingWriter (Engine& engine,
                                     w32::io::OutputStream& stream)

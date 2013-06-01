@@ -26,7 +26,7 @@
 
 #include "Stream.hpp"
 
-namespace fio {
+namespace cz {
 
     Reader::~Reader ()
     {

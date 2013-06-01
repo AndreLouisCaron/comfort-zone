@@ -28,7 +28,7 @@
 #include "Engine.hpp"
 #include "Hub.hpp" // TODO: include "Slave.hpp"
 
-namespace fio {
+namespace cz {
 
     FileReader::FileReader (Engine& engine, const w32::string& path)
         : myEngine(engine)

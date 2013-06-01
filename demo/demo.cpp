@@ -25,11 +25,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-// TODO:
-// - find a way to deal with GUI.
-
-
-#include "../code/fio.hpp"
+#include "comfort-zone.hpp"
 
 #include <iostream>
 #include <memory>
@@ -37,15 +33,15 @@
 namespace {
 
     class SampleTask1 :
-        public fio::Task
+        public cz::Task
     {
         /* data. */
     private:
-        fio::Engine& myEngine;
+        cz::Engine& myEngine;
 
         /* construction. */
     public:
-        SampleTask1 (fio::Engine& engine)
+        SampleTask1 (cz::Engine& engine)
             : myEngine(engine)
         {}
 
@@ -101,15 +97,15 @@ namespace {
     };
 
     class SampleTask2 :
-        public fio::Task
+        public cz::Task
     {
         /* data. */
     private:
-        fio::Engine& myEngine;
+        cz::Engine& myEngine;
 
         /* construction. */
     public:
-        SampleTask2 (fio::Engine& engine)
+        SampleTask2 (cz::Engine& engine)
             : myEngine(engine)
         {}
 
@@ -122,18 +118,18 @@ namespace {
                 << std::endl;
 
             // Try reading from the standard input.
-            { char data[1024]; fio::size_t size = sizeof(data);
-                std::auto_ptr<fio::Reader> reader(
+            { char data[1024]; cz::size_t size = sizeof(data);
+                std::auto_ptr<cz::Reader> reader(
                     //myEngine.file_reader(L"demo.exe.resource.txt"));
                     myEngine.standard_input());
-                std::auto_ptr<fio::Writer> writer(
+                std::auto_ptr<cz::Writer> writer(
                     //myEngine.file_writer(L"some-output.txt"));
                     myEngine.standard_output());
 
                 // Exhaust input stream.
-                for (fio::size_t used=0; ((used=reader->get(data, size)) > 0);)
+                for (cz::size_t used=0; ((used=reader->get(data, size)) > 0);)
                 {
-                    for (fio::size_t pass=0; (pass < used);) {
+                    for (cz::size_t pass=0; (pass < used);) {
                         pass += writer->put(data+pass, used-pass);
                     }
                 }
@@ -146,15 +142,15 @@ namespace {
     };
 
     class SampleTask3 :
-        public fio::Task
+        public cz::Task
     {
         /* data. */
     private:
-        fio::Engine& myEngine;
+        cz::Engine& myEngine;
 
         /* construction. */
     public:
-        SampleTask3 (fio::Engine& engine)
+        SampleTask3 (cz::Engine& engine)
             : myEngine(engine)
         {}
 
@@ -169,7 +165,7 @@ namespace {
             try {
                 // Start listening for incomming connections.
                 const w32::net::ipv4::EndPoint endpoint(127, 0, 0, 1, 8080);
-                std::auto_ptr<fio::Listener> listener
+                std::auto_ptr<cz::Listener> listener
                     (myEngine.listen(endpoint));
 
                 std::cerr
@@ -177,8 +173,8 @@ namespace {
                     << std::endl;
 
                 // Accept 1st connection!
-                char data[1024]; fio::size_t size = sizeof(data);
-                std::auto_ptr<fio::Channel> stream
+                char data[1024]; cz::size_t size = sizeof(data);
+                std::auto_ptr<cz::Channel> stream
                     (listener->accept(data, size));
 
                 std::cerr
@@ -199,15 +195,15 @@ namespace {
     };
 
     class SampleTask4 :
-        public fio::Task
+        public cz::Task
     {
         /* data. */
     private:
-        fio::Engine& myEngine;
+        cz::Engine& myEngine;
 
         /* construction. */
     public:
-        SampleTask4 (fio::Engine& engine)
+        SampleTask4 (cz::Engine& engine)
             : myEngine(engine)
         {}
 
@@ -222,7 +218,7 @@ namespace {
             try {
                 // Start listening for incomming connections.
                 const w32::net::ipv4::EndPoint peer(127, 0, 0, 1, 8080);
-                std::auto_ptr<fio::Channel> stream
+                std::auto_ptr<cz::Channel> stream
                     (myEngine.connect(peer));
 
                 std::cerr
@@ -256,8 +252,8 @@ namespace {
         const w32::net::Context _;
 
         // Start an I/O application!
-        fio::Hub hub;
-        fio::Engine engine(hub);
+        cz::Hub hub;
+        cz::Engine engine(hub);
 
         // Block on waitable.
         std::cerr

@@ -1,5 +1,5 @@
-#ifndef _fio_trace_hpp__
-#define _fio_trace_hpp__
+#ifndef _cz_trace_hpp__
+#define _cz_trace_hpp__
 
 // Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
@@ -27,11 +27,11 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifdef FIO_DEBUG
+#ifdef CZ_DEBUG
 #   include <iostream>
-#   define fio_trace(x) std::cerr << x << std::endl;
+#   define cz_trace(x) std::cerr << x << std::endl;
 #else
-#   define fio_trace(x)
+#   define cz_trace(x)
 #endif
 
-#endif /* _fio_trace_hpp__ */
+#endif /* _cz_trace_hpp__ */

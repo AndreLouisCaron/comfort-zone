@@ -24,7 +24,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-set(fio_headers
+set(cz_headers
   BlockingReader.hpp
   BlockingWriter.hpp
   Computation.hpp
@@ -37,7 +37,7 @@ set(fio_headers
   SocketChannel.hpp
   Stream.hpp
 )
-set(fio_sources
+set(cz_sources
   BlockingReader.cpp
   BlockingWriter.cpp
   Computation.cpp
@@ -50,7 +50,7 @@ set(fio_sources
   SocketChannel.cpp
   Stream.cpp
 )
-set(fio_libraries
+set(cz_libraries
   w32
   w32.dbg
   w32.io
@@ -58,9 +58,9 @@ set(fio_libraries
   w32.tp
 )
 
-add_library(fio
+add_library(comfort-zone
   STATIC
-  ${fio_headers}
-  ${fio_sources}
+  ${cz_headers}
+  ${cz_sources}
 )
-target_link_libraries(fio ${fio_libraries})
+target_link_libraries(comfort-zone ${cz_libraries})

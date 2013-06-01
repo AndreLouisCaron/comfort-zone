@@ -25,7 +25,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # Custom options:
-# - FIO_TRACE (ON/OFF): controls debug output.
+# - CZ_TRACE (ON/OFF): controls debug output.
 
 # Custom targets:
 # - help: builds API documentation in HTML format using Doxygen.  Add the
@@ -38,9 +38,9 @@
 
 cmake_minimum_required(VERSION 2.6)
 
-project(fio)
+project(comfort-zone)
 
-option(FIO_TRACE "Enable detail hub & engine tracing." OFF)
+option(CZ_TRACE "Enable detail hub & engine tracing." OFF)
 
 if (NOT PROJECT_VERSION)
   set(PROJECT_VERSION "(dev)")
@@ -103,15 +103,21 @@ add_submodule(w32
 include_directories(${w32_include_dir})
 
 # Build main library.
-if (FIO_TRACE)
+if (CZ_TRACE)
   add_definitions(
-    -DFIO_DEBUG
+    -DCZ_DEBUG
   )
 endif()
 add_subdirectory(code)
 
+# TODO: move this to a `comfort-zone-config.cmake`.
+set(cz_include_dir ${CMAKE_CURRENT_SOURCE_DIR}/code)
+
 # Exclude all but the core libraries when built as a dependency.
 if(${PROJECT_NAME} STREQUAL ${CMAKE_PROJECT_NAME})
+
+  # Make sure `comfort-zone.hpp` can be resolved.
+  include_directories(${cz_include_dir})
 
   # Build demo projects.
   add_subdirectory(demo)

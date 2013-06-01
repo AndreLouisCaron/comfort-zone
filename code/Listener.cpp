@@ -45,14 +45,14 @@ namespace {
 
 }
 
-namespace fio {
+namespace cz {
 
     Listener::Listener (Engine& engine, w32::net::ipv4::EndPoint endpoint)
         : myEngine(engine)
         , mySocket(endpoint)
     {
         // Make sure we receive I/O completion notifications :-)
-        fio_trace("  >> Binding listener to completion port.");
+        cz_trace("  >> Binding listener to completion port.");
         myEngine.completion_port().bind(mySocket.handle(), &engine);
     }
 
@@ -67,7 +67,7 @@ namespace fio {
         // TODO: finish wrapping this in a class for applications to issue multiple calls in the same task.
 
         // Start the asynchronous accept request.
-        fio_trace(" >> Starting async accept request.");
+        cz_trace(" >> Starting async accept request.");
         AcceptRequest request(myEngine, mySocket);
         request.start();
 
@@ -115,14 +115,14 @@ namespace fio {
 
         // Accept requests can be cancelled :-(
         if (notification.aborted()) {
-            fio_trace(" >> Accept request cancelled.");
+            cz_trace(" >> Accept request cancelled.");
             return (0);
         }
 
         // Propagate I/O exception to the caller if necessary.
         notification.report_error();
 
-        fio_trace(" >> Connected!");
+        cz_trace(" >> Connected!");
 
         // Recover connection end points.
         update_context();
@@ -130,8 +130,8 @@ namespace fio {
         w32::net::ipv4::EndPoint peer;
         recover_endpoints(host, peer);
 
-        fio_trace(" >> Host: " << host);
-        fio_trace(" >> Peer: " << peer);
+        cz_trace(" >> Host: " << host);
+        cz_trace(" >> Peer: " << peer);
 
         // Make sure we receive I/O completion notifications :-)
         myRequest.engine().completion_port().bind(myStream, &myRequest.engine());
@@ -164,7 +164,7 @@ namespace fio {
             (myStream.handle(), level, option,
              reinterpret_cast<char*>(&parent), sizeof(parent));
         if (result == SOCKET_ERROR) {
-            fio_trace("Could not update context.");
+            cz_trace("Could not update context.");
         }
     }
 
