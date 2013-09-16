@@ -121,7 +121,7 @@ namespace cz {
         template<typename T>
         T * context () const
         {
-            return (static_cast<T>(myContext));
+            return (static_cast<T*>(myContext));
         }
 
     private:
