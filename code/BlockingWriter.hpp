@@ -30,6 +30,7 @@
 #include <w32.hpp>
 #include <w32.io.hpp>
 
+#include "Computation.hpp"
 #include "Request.hpp"
 #include "Stream.hpp"
 
@@ -39,7 +40,7 @@ namespace cz {
 
     /*!
      * @ingroup resources
-     * @brief Stream that reads from an input file.
+     * @brief Stream that writes to a blocking output stream.
      */
     class BlockingWriter :
         public Writer
@@ -57,6 +58,24 @@ namespace cz {
         /* overrides. */
     public:
         virtual size_t put (const void * data, size_t size);
+    };
+
+
+    class BlockingPutRequest :
+        public cz::Computation
+    {
+        w32::io::OutputStream& myStream;
+        const void *const myData;
+        const size_t mySize;
+        size_t myUsed;
+
+    public:
+        BlockingPutRequest (w32::io::OutputStream& stream,
+                            const void * data, size_t size);
+        size_t result () const;
+
+    protected:
+        virtual void execute ();
     };
 
 }

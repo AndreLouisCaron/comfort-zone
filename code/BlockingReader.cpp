@@ -26,45 +26,8 @@
 
 #include "BlockingReader.hpp"
 #include "Engine.hpp"
-#include "Computation.hpp"
 
 #include "trace.hpp"
-
-namespace {
-
-    class BlockingRead :
-        public cz::Computation
-    {
-        w32::io::InputStream& myStream;
-        void *const myData;
-        const size_t mySize;
-        size_t myUsed;
-    public:
-        BlockingRead (w32::io::InputStream& stream, void * data, size_t size)
-            : myStream(stream)
-            , myData(data)
-            , mySize(size)
-            , myUsed(0)
-        {}
-
-        size_t result () const {
-            return (myUsed);
-        }
-
-    protected:
-        virtual void execute ()
-        {
-            cz_trace(" >> Reading " << mySize << " bytes from blocking stream.");
-
-            // For a stream like the standard input, the application needs to
-            // react to each line as soon as it is received, but the buffer may
-            // be larger than necessary.  Don't try to fill the buffer because
-            // it may block this kind of stream.
-            myUsed += myStream.get(static_cast<char*>(myData), mySize);
-        }
-    };
-
-}
 
 namespace cz {
 
@@ -77,9 +40,40 @@ namespace cz {
 
     size_t BlockingReader::get (void * data, size_t size)
     {
-        ::BlockingRead computation(myBackend, data, size);
+        BlockingGet computation(myBackend, data, size);
         myEngine.compute(computation);
         return (computation.result());
+    }
+
+    w32::io::InputStream& BlockingReader::stream ()
+    {
+        return (myBackend);
+    }
+
+
+    BlockingGet::BlockingGet (w32::io::InputStream& stream,
+                                void * data, size_t size)
+        : myStream(stream)
+        , myData(data)
+        , mySize(size)
+        , myUsed(0)
+    {
+    }
+
+    size_t BlockingGet::result () const
+    {
+        return (myUsed);
+    }
+
+    void BlockingGet::execute ()
+    {
+        cz_trace(" >> Reading " << mySize << " bytes from blocking stream.");
+
+        // For a stream like the standard input, the application needs to
+        // react to each line as soon as it is received, but the buffer may
+        // be larger than necessary.  Don't try to fill the buffer because
+        // it may block this kind of stream.
+        myUsed += myStream.get(static_cast<char*>(myData), mySize);
     }
 
 }

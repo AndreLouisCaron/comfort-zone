@@ -26,44 +26,8 @@
 
 #include "BlockingWriter.hpp"
 #include "Engine.hpp"
-#include "Computation.hpp"
 
 #include "trace.hpp"
-
-namespace {
-
-    class BlockingWrite :
-        public cz::Computation
-    {
-        w32::io::OutputStream& myStream;
-        const char * myData;
-        const size_t mySize;
-        size_t myUsed;
-    public:
-        BlockingWrite (w32::io::OutputStream& stream,
-                       const void * data, size_t size)
-            : myStream(stream)
-            , myData(static_cast<const char*>(data))
-            , mySize(size)
-            , myUsed(0)
-        {}
-
-        size_t result () const {
-            return (myUsed);
-        }
-
-    protected:
-        virtual void execute ()
-        {
-            // Consume everything while we're in the background thread!
-            while (myUsed < mySize) {
-                cz_trace(" >> Writing " << (mySize-myUsed) << " bytes to blocking stream.");
-                myUsed += myStream.put(myData+myUsed, mySize-myUsed);
-            }
-        }
-    };
-
-}
 
 namespace cz {
 
@@ -76,9 +40,34 @@ namespace cz {
 
     size_t BlockingWriter::put (const void * data, size_t size)
     {
-        ::BlockingWrite computation(myBackend, data, size);
+        BlockingPutRequest computation(myBackend, data, size);
         myEngine.compute(computation);
         return (computation.result());
+    }
+
+
+    BlockingPutRequest::BlockingPutRequest (w32::io::OutputStream& stream,
+                                            const void * data, size_t size)
+        : myStream(stream)
+        , myData(data)
+        , mySize(size)
+        , myUsed(0)
+    {
+    }
+
+    size_t BlockingPutRequest::result () const
+    {
+        return (myUsed);
+    }
+
+    void BlockingPutRequest::execute ()
+    {
+        // Consume everything while we're in the background thread!
+        const char *const data = static_cast<const char*>(myData);
+        while (myUsed < mySize) {
+            cz_trace(" >> Writing " << (mySize-myUsed) << " bytes to blocking stream.");
+            myUsed += myStream.put(data+myUsed, mySize-myUsed);
+        }
     }
 
 }

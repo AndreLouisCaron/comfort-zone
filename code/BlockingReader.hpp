@@ -30,7 +30,7 @@
 #include <w32.hpp>
 #include <w32.io.hpp>
 
-#include "Request.hpp"
+#include "Computation.hpp"
 #include "Stream.hpp"
 
 namespace cz {
@@ -55,9 +55,38 @@ namespace cz {
         //       high-throughput).
         explicit BlockingReader (Engine& engine, w32::io::InputStream& stream);
 
+        /* methods. */
+    public:
+        w32::io::InputStream& stream ();
+
         /* overrides. */
     public:
         virtual size_t get (void * data, size_t size);
+    };
+
+
+    // Performs blocking read operation in the thread pool.
+    class BlockingGet :
+        public cz::Computation
+    {
+        /* data. */
+    private:
+        w32::io::InputStream& myStream;
+        void *const myData;
+        const size_t mySize;
+        size_t myUsed;
+
+        /* construction. */
+    public:
+        BlockingGet (w32::io::InputStream& stream,
+                     void * data, size_t size);
+
+        /* methods. */
+    public:
+        size_t result () const;
+
+    protected:
+        virtual void execute ();
     };
 
 }
