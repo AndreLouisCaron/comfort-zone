@@ -90,6 +90,11 @@ namespace cz {
         return (myPeer);
     }
 
+    w32::net::StreamSocket& SocketChannel::socket ()
+    {
+        return (myStream);
+    }
+
     size_t SocketChannel::get (void * data, size_t size)
     {
         Hub::Slave& self = Hub::Slave::self();
