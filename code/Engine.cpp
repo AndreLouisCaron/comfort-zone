@@ -154,19 +154,19 @@ namespace cz {
         return (new Listener(*this, endpoint));
     }
 
-    Channel * Engine::connect (w32::net::ipv4::EndPoint peer)
+    SocketChannel * Engine::connect (w32::net::ipv4::EndPoint peer)
     {
         return (Engine::connect(w32::net::ipv4::Address::any(), peer));
     }
 
-    Channel * Engine::connect (w32::net::ipv4::Address host,
-                               w32::net::ipv4::EndPoint peer)
+    SocketChannel * Engine::connect (w32::net::ipv4::Address host,
+                                     w32::net::ipv4::EndPoint peer)
     {
         return (Engine::connect(w32::net::ipv4::EndPoint(host, 0), peer));
     }
 
-    Channel * Engine::connect (w32::net::ipv4::EndPoint host,
-                               w32::net::ipv4::EndPoint peer)
+    SocketChannel * Engine::connect (w32::net::ipv4::EndPoint host,
+                                     w32::net::ipv4::EndPoint peer)
     {
         ConnectRequest request(*this, host, peer);
         request.start();

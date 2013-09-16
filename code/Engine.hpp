@@ -50,6 +50,7 @@ namespace cz {
     class Listener;
     class Reader;
     class Request;
+    class SocketChannel;
     class Writer;
 
     // Async operations.
@@ -201,11 +202,11 @@ namespace cz {
 
         // Hub-friendly asynchronous network I/O.
         Listener * listen (w32::net::ipv4::EndPoint host);
-        Channel * connect (w32::net::ipv4::EndPoint peer);
-        Channel * connect (w32::net::ipv4::Address host,
-                           w32::net::ipv4::EndPoint peer);
-        Channel * connect (w32::net::ipv4::EndPoint host,
-                           w32::net::ipv4::EndPoint peer);
+        SocketChannel * connect (w32::net::ipv4::EndPoint peer);
+        SocketChannel * connect (w32::net::ipv4::Address host,
+                                 w32::net::ipv4::EndPoint peer);
+        SocketChannel * connect (w32::net::ipv4::EndPoint host,
+                                 w32::net::ipv4::EndPoint peer);
 
         /*!
          * @brief Have @a computation execute in a background thread.
