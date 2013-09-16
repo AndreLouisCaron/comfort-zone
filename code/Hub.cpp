@@ -32,10 +32,16 @@
 
 namespace cz {
 
+    const char * Hub::Shutdown::what () const throw()
+    {
+        return ("comfort-zone hub is shutting down, do not intercept this.");
+    }
+
     Hub::Hub ()
         : myMaster(w32::mt::start_fiber())
         , mySlaves()
         , myQueue()
+        , myState(Running)
     {
         cz_trace("+hub(0x" << this << ")");
         cz_trace("@hub(0x" << this << ")");
@@ -68,7 +74,7 @@ namespace cz {
             slave->resume();
         }
         if (mode == Deferred) {
-            schedule(*slave);
+            slave->resume_later();
         }
     }
 
@@ -124,10 +130,62 @@ namespace cz {
 
     void Hub::resume ()
     {
+        // Reminder: this function is called by slaves!
+
+        // Switch control back to hub so that it can resume us whenever the
+        // asynchronous operation(s) we just launch complete(s).
         myMaster.yield_to();
 
         // Slave has just been resumed.
         cz_trace("@slave(0x" << &Slave::self() << ")");
+
+        // OK, something completed and the hub has us (the slave).  This is a
+        // neat place to check lots of different things, including whether
+        // someone has tried to shut down the hub.
+        if (myState != Running)
+        {
+            if (myState == Closing) {
+                throw (Shutdown());
+            }
+
+            // In case future additions go unnoticed.
+            cz_trace("WARNING: unhandled change in hub state.");
+        }
+    }
+
+    void Hub::shutdown ()
+    {
+        // The hub state is the first thing that's checked inside the slaves
+        // after they've been resumed.  When they see that the hub state is set
+        // to `Closing`, they will raise an exception that will propagate up
+        // the call stack until they reach the fiber entry point, at which
+        // point we can safely close the fiber.
+        myState = Closing;
+
+        for (int i = 0; !mySlaves.empty(); ++i)
+        {
+            // If we need more that one iteration, we have at least one task
+            // that's misbehaving (e.g. `try {} catch (...) {}`).  Repeat the
+            // operation until ALL tasks shut down.
+            if (i > 0) {
+                cz_trace("WARNING: one or more tasks have not shut down.");
+            }
+
+            // Nevermind if there is pending work to dispatch, we're forcing
+            // immediate shutdown of all slaves.
+            myQueue.clear();
+
+            // Schedule execution of ALL slaves.
+            std::set<Slave*>::iterator current = mySlaves.begin();
+            const std::set<Slave*>::iterator end = mySlaves.end();
+            while (current != end) {
+                (*current)->resume_later();
+            }
+
+            // OK, resume slaves so that they can check the hub state and raise
+            // the internal exception.
+            resume_pending_slaves();
+        }
     }
 
     bool Hub::exists (Slave * slave) const

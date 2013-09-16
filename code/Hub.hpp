@@ -31,6 +31,7 @@
 #include <w32.mt.hpp>
 
 #include <deque>
+#include <exception>
 #include <set>
 #include <utility>
 
@@ -54,6 +55,13 @@ namespace cz {
         class Slave;
 
     private:
+        class Shutdown
+            : public std::exception
+        {
+        public:
+            virtual const char * what () const throw();
+        };
+
         typedef std::deque< std::pair<Slave*,Request*> > SlaveQueue;
 
     public:
@@ -66,6 +74,16 @@ namespace cz {
             StartNow, // start before returning.
         };
 
+        /*!
+         * @internal
+         * @brief Hub state.
+         * @see shutdown
+         */
+        enum State {
+            Running,
+            Closing,
+        };
+
         /* data. */
     private:
         w32::mt::Fiber myMaster;
@@ -73,6 +91,8 @@ namespace cz {
 
         // Holds slaves ready to resume.
         SlaveQueue myQueue;
+
+        State myState;
 
         /* construction. */
     public:
@@ -124,6 +144,12 @@ namespace cz {
          *  they initiate one or more asynchronous requests.
          */
         void resume ();
+
+        /*!
+         * @internal
+         * @brief Force all slaves to end.
+         */
+        void shutdown ();
 
     private:
         bool exists (Slave * slave) const;
