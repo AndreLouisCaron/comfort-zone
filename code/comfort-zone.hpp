@@ -31,6 +31,8 @@
 #include "BlockingWriter.hpp"
 #include "Computation.hpp"
 #include "Engine.hpp"
+#include "FileReader.hpp"
+#include "FileWriter.hpp"
 #include "Hub.hpp"
 #include "Request.hpp"
 #include "Stream.hpp"
