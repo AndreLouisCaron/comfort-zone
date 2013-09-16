@@ -36,10 +36,6 @@ namespace cz {
 
     class Computation
     {
-        /* nested types. */
-    public:
-        class Request;
-
         /* data. */
     private:
         const bool myBounded;
