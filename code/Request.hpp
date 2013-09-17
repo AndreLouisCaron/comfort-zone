@@ -67,7 +67,7 @@ namespace cz {
         // TOOD: break this down into necessary items?
         w32::io::Notification myNotification;
 
-        Hub::Slave& mySlave; // slave that started the request.
+        Hub::Slave * mySlave; // slave that started the request.
 
         void * myContext; // application defined context.
 

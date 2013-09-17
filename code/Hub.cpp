@@ -97,8 +97,6 @@ namespace cz {
         // Have it run until it passes control back to us.
         slave->resume();
 
-        cz_trace("@hub(0x" << this << ")");
-
         // Check if the fiber has just completed execution.
         if (slave->myTask.closing()) {
             // TODO: check for exception in fiber.
@@ -128,6 +126,9 @@ namespace cz {
     void Hub::resume ()
     {
         myMaster.yield_to();
+
+        // Slave has just been resumed.
+        cz_trace("@slave(0x" << &Slave::self() << ")");
     }
 
     bool Hub::exists (Slave * slave) const
@@ -244,13 +245,16 @@ namespace cz {
     {
         Slave *const slave = w32::mt::Fiber::context<Slave*>();
         if (slave == 0) {
-            // throw something.
+            throw (std::exception("Not running inside a slave!"));
         }
         return (*slave);
     }
 
     void Hub::Slave::entry (w32::mt::Fiber::Context context)
     {
+        // Note: this is the system entry point for the fiber, it's effectively
+        //       the root of the call stack for the fiber.
+
         Slave& self = *static_cast<Slave*>(context);
 
         // Alive for the first time.
@@ -283,7 +287,15 @@ namespace cz {
 
     void Hub::Slave::resume ()
     {
+        // Note: this function is always called by the hub!
+        if (!myHub.running()) {
+            throw (std::exception("Only the hub can resume slaves!"));
+        }
+
         myFiber.yield_to();
+
+        // Hub has just been resumed.
+        cz_trace("@hub(0x" << &myHub << ")");
     }
 
     void Hub::Slave::resume_later ()
@@ -293,9 +305,13 @@ namespace cz {
 
     void Hub::Slave::pause ()
     {
+        if (this != &self()) {
+            throw (std::exception("The slave must pause itself!"));
+        }
+
         // Put current fiber in queue to continue execution later, then return
         // control to the hub until it's ready to resume us.
-        myHub.schedule(*this), myHub.resume();
+        resume_later(), myHub.resume();
 
         cz_trace("@slave(0x" << myFiber.handle() << ")");
     }

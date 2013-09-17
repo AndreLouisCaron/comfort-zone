@@ -48,7 +48,7 @@ namespace cz {
         : myData()
         , myEngine(engine)
         , myNotification()
-        , mySlave(Hub::Slave::self())
+        , mySlave(&Hub::Slave::self())
         , myContext(context)
     {
         ::ZeroMemory(&myData, sizeof(myData));
@@ -79,6 +79,10 @@ namespace cz {
     {
         cz_trace("*request(0x" << this << "): start");
         myData.Internal = STATUS_PENDING;
+
+        // Re-assign slave in case the request is pooled for use by different
+        // slaves at different points in its life cycle.
+        mySlave = &Hub::Slave::self();
     }
 
     void Request::close ()
@@ -112,7 +116,7 @@ namespace cz {
 
     void Request::report_completion (w32::dword size)
     {
-        cz_trace("!request(0x" << this << ")");
+        cz_trace(">request(0x" << this << ")");
         myEngine.complete_request(*this, &myEngine, size);
     }
 
@@ -127,6 +131,8 @@ namespace cz {
         //       to shared resources and cannot interact with the hub, so there
         //       is no additional synchronization to perform.
 
+        cz_trace(" >> in work request callback.");
+
         Computation& computation = *static_cast<Computation*>(myContext);
 
         // Let the system know if we intend to block on this for a while.
@@ -136,10 +142,11 @@ namespace cz {
 
         // Run computation.
         try {
+            cz_trace(" >> executing work.");
             computation.execute();
         }
         catch (...) {
-            cz_trace("?request(0x" << this << ") error during computaion.");
+            cz_trace("?request(0x" << this << "): error during computaion.");
             // TODO: report error in completion notification!
         }
 
@@ -160,7 +167,7 @@ namespace cz {
         //       object and the reading task is suspended, synchronization is
         //       implicit.
 
-        cz_trace("*request(0x" << this << ") completing request.");
+        cz_trace(" >> in wait request callback.");
 
         // Mark the request as completed.  This ensures that the slave can
         // correctly use the `ready()` method to determine if this operation

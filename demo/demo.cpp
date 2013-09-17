@@ -50,13 +50,13 @@ namespace {
         w32::dword background_job ()
         {
             std::cerr
-                << "@task(sample-1): thread has begun"
+                << "#task(sample-1): thread has begun"
                 << std::endl;
 
             w32::mt::sleep(w32::Timespan(2500));
 
             std::cerr
-                << "@task(sample-1): thread complete"
+                << "#task(sample-1): thread complete"
                 << std::endl;
 
             return 0;
@@ -74,24 +74,24 @@ namespace {
         {
             // Launch a background thread.
             std::cerr
-                << "@task(sample-1): starting thread"
+                << "#task(sample-1): starting thread"
                 << std::endl;
             w32::mt::Thread thread(entry_point(), this);
 
             // Wait for it complete.
             std::cerr
-                << "@task(sample-1): async wait"
+                << "#task(sample-1): async wait"
                 << std::endl;
             myEngine.join(thread);
 
             // Make sure the thread completes.
             std::cerr
-                << "@task(sample-1): checking thread"
+                << "#task(sample-1): checking thread"
                 << std::endl;
             thread.join();
 
             std::cerr
-                << "@task(sample-1): done"
+                << "#task(sample-1): done"
                 << std::endl;
         }
     };
@@ -114,7 +114,7 @@ namespace {
         virtual void run ()
         {
             std::cerr
-                << "@task(sample-2): 1"
+                << "#task(sample-2): 1"
                 << std::endl;
 
             // Try reading from the standard input.
@@ -136,7 +136,7 @@ namespace {
             }
 
             std::cerr
-                << "@task(sample-2): 2"
+                << "#task(sample-2): 2"
                 << std::endl;
         }
     };
@@ -159,7 +159,7 @@ namespace {
         virtual void run ()
         {
             std::cerr
-                << "@task(sample-3): 1"
+                << "#task(sample-3): 1"
                 << std::endl;
 
             try {
@@ -169,7 +169,7 @@ namespace {
                     (myEngine.listen(endpoint));
 
                 std::cerr
-                    << "@task(sample-3): 2"
+                    << "#task(sample-3): 2"
                     << std::endl;
 
                 // Accept 1st connection!
@@ -178,7 +178,7 @@ namespace {
                     (listener->accept(data, size));
 
                 std::cerr
-                    << "@task(sample-3): 3"
+                    << "#task(sample-3): 3"
                     << std::endl;
             }
             catch (const w32::Error& error) {
@@ -189,7 +189,7 @@ namespace {
             }
 
             std::cerr
-                << "@task(sample-4): 4"
+                << "#task(sample-4): 4"
                 << std::endl;
         }
     };
@@ -212,7 +212,7 @@ namespace {
         virtual void run ()
         {
             std::cerr
-                << "@task(sample-4): 1"
+                << "#task(sample-4): 1"
                 << std::endl;
 
             try {
@@ -222,7 +222,7 @@ namespace {
                     (myEngine.connect(peer));
 
                 std::cerr
-                    << "@task(sample-4): 2"
+                    << "#task(sample-4): 2"
                     << std::endl;
             }
             catch (const w32::Error& error) {
@@ -234,7 +234,7 @@ namespace {
             }
 
             std::cerr
-                << "@task(sample-4): 3"
+                << "#task(sample-4): 3"
                 << std::endl;
         }
     };

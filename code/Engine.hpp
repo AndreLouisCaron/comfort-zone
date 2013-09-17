@@ -139,6 +139,8 @@ namespace cz {
                                w32::dword size=0);
 
     public:
+        Hub& hub ();
+
         /*!
          * @internal
          */

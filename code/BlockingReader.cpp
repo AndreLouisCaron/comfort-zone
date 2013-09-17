@@ -67,13 +67,16 @@ namespace cz {
 
     void BlockingGet::execute ()
     {
-        cz_trace(" >> Reading " << mySize << " bytes from blocking stream.");
+        cz_trace(" >> reading " << mySize << " bytes from blocking stream.");
 
         // For a stream like the standard input, the application needs to
         // react to each line as soon as it is received, but the buffer may
         // be larger than necessary.  Don't try to fill the buffer because
         // it may block this kind of stream.
-        myUsed += myStream.get(static_cast<char*>(myData), mySize);
+        const size_t size = myStream.get(static_cast<char*>(myData), mySize);
+        myUsed += size;
+
+        cz_trace(" >> got " << size << " from blocking stream.");
     }
 
 }

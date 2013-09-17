@@ -51,6 +51,11 @@ namespace cz {
         cz_trace("-engine(0x" << this << ")");
     }
 
+    Hub& Engine::hub ()
+    {
+        return (myHub);
+    }
+
     w32::io::CompletionPort& Engine::completion_port ()
     {
         return (myCompletionPort);
@@ -81,14 +86,14 @@ namespace cz {
         }
         Request *const request = static_cast<Request::Data*>
             (&notification.transfer()->data())->request;
-        cz_trace(">request(0x" << request << ")");
+        cz_trace("<request(0x" << request << ")");
 
         // Store the notification for use by the initiating fiber.
         request->myNotification = notification;
 
         // The fiber that was waiting for this notification can now resume,
         // reschedule it.
-        myHub.schedule(request->mySlave);
+        myHub.schedule(*request->mySlave);
     }
 
     void Engine::wait_for_notification ()
@@ -241,9 +246,6 @@ namespace cz {
         // Switch to master, it will resume us when it receives a completion
         // notification from the worker thread.
         myHub.resume();
-
-        // Process results & clean up.
-        request.close();
     }
 
     void Engine::compute (Computation& computation)
@@ -259,9 +261,6 @@ namespace cz {
         // Switch to master, it will resume us when it receives a completion
         // notification from the worker thread.
         myHub.resume();
-
-        // Process results & clean up.
-        request.close();
     }
 
 
@@ -294,6 +293,11 @@ namespace cz {
     }
 
     void WorkRequest::close ()
+    {
+        myRequest.close();
+    }
+
+    void WorkRequest::reset ()
     {
         if (!myRequest.ready())
         {
@@ -334,6 +338,11 @@ namespace cz {
     }
 
     void WaitRequest::close ()
+    {
+        myRequest.close();
+    }
+
+    void WaitRequest::reset ()
     {
         if (!myRequest.ready())
         {

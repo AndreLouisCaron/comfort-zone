@@ -65,7 +65,7 @@ namespace cz {
         // Consume everything while we're in the background thread!
         const char *const data = static_cast<const char*>(myData);
         while (myUsed < mySize) {
-            cz_trace(" >> Writing " << (mySize-myUsed) << " bytes to blocking stream.");
+            cz_trace(" >> writing " << (mySize-myUsed) << " bytes to blocking stream.");
             myUsed += myStream.put(data+myUsed, mySize-myUsed);
         }
     }
