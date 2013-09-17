@@ -273,13 +273,15 @@ namespace cz {
 
     void WorkRequest::start ()
     {
+        // Mark the request as "in progress" before starting the job, otherwise
+        // the kernel may preempt us and complete the task before we can update
+        // the request status.
+        myRequest.start();
+
         // Schedule work in thread pool.  When the computation completes,
         // the `Request` object's `work_callback` will post a completion
         // notification to the I/O completion port and the hub will resume us.
         myJob.submit();
-
-        // Mark the request as "in progress".
-        myRequest.start();
 
         // Note: even if the system can technically preempt the current thread
         //       at this point and execute the entire computation before
@@ -318,13 +320,15 @@ namespace cz {
 
     void WaitRequest::start ()
     {
+        // Mark the request as "in progress" before starting the job, otherwise
+        // the kernel may preempt us and satisfy the wait before we can update
+        // the request status.
+        myRequest.start();
+
         // Schedule wait in thread pool.  When the waitable object is signaled,
         // the `Request` object's `wait_callback` will post a completion
         // notification to the I/O completion port and the hub will resume us.
         myJob.watch(myWaitable.handle());
-
-        // Mark the request as "in progress".
-        myRequest.start();
 
         // Note: even if the system can technically preempt the current thread
         //       at this point and execute the entire computation before
