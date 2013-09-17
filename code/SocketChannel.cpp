@@ -107,7 +107,7 @@ namespace cz {
         // notification for the asynchronous I/O operation.
         self.hub().resume();
 
-        return (request.close());
+        return (request.result());
     }
 
     size_t SocketChannel::put (const void * data, size_t size)
@@ -122,7 +122,7 @@ namespace cz {
         // notification for the asynchronous I/O operation.
         self.hub().resume();
 
-        return (request.close());
+        return (request.result());
     }
 
     ConnectRequest::ConnectRequest (Engine& engine,
@@ -168,7 +168,7 @@ namespace cz {
         return (myRequest.ready());
     }
 
-    SocketChannel * ConnectRequest::close()
+    SocketChannel * ConnectRequest::result()
     {
         // The hub has resume us, collect results!
         const w32::io::Notification notification = myRequest.notification();

@@ -76,7 +76,7 @@ namespace cz {
         self.hub().resume();
 
         // Collect results.
-        return request.close();
+        return request.result();
     }
 
     AcceptRequest::AcceptRequest (Engine& engine, w32::net::tcp::Listener& listener)
@@ -108,7 +108,7 @@ namespace cz {
         return (myRequest.ready());
     }
 
-    SocketChannel * AcceptRequest::close ()
+    SocketChannel * AcceptRequest::result ()
     {
         // Collect results!
         const w32::io::Notification notification = myRequest.notification();

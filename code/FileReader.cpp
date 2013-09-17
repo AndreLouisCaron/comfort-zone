@@ -59,7 +59,7 @@ namespace cz {
         // notification for the asynchronous I/O operation.
         self.hub().resume();
 
-        return (request.close());
+        return (request.result());
     }
 
 
@@ -82,7 +82,7 @@ namespace cz {
         return (myRequest.ready());
     }
 
-    size_t GetRequest::close ()
+    size_t GetRequest::result ()
     {
         // The hub has resume us, collect results!
         const w32::io::Notification notification = myRequest.notification();

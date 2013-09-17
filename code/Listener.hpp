@@ -94,7 +94,11 @@ namespace cz {
     public:
         void start ();
         bool ready () const;
-        SocketChannel * close ();
+
+        // Note: `close()` is implicit (native async request).
+
+        SocketChannel * result ();
+
         void reset (); // call before calling `start()` again.
 
     private:

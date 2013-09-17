@@ -105,7 +105,10 @@ namespace cz {
         // TODO: accept application-supplied buffer.
         void start ();
         bool ready () const;
-        SocketChannel * close (); // TODO: return size of transferred.
+
+        // Note: `close()` is implicit (native async request).
+
+        SocketChannel * result (); // TODO: return size of transferred.
         void reset (); // call before calling `start()` again.
 
     private:

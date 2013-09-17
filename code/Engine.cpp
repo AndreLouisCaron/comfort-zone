@@ -185,7 +185,7 @@ namespace cz {
         }
 
         // Collect results.
-        return (request.close());
+        return (request.result());
     }
 
     void Engine::join (w32::ipc::Process process)

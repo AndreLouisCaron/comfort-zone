@@ -78,7 +78,10 @@ namespace cz {
     public:
         void start (const void * data, size_t size);
         bool ready () const;
-        size_t close ();
+
+        // Note: `close()` is implicit (native async request).
+        size_t result ();
+
         void reset (); // call before calling `start()` again.
 
     private:
