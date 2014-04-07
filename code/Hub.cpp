@@ -88,39 +88,38 @@ namespace cz {
         if (myQueue.empty()) {
             return;
         }
-        Slave *const slave = myQueue.front(); myQueue.pop_front();
-        if (!exists(slave)) {
-            cz_trace("?hub(0x" << this << "): unknown slave(0x" << slave << ").");
+        std::pair<Slave*,Request*> queued_slave = myQueue.front();
+        myQueue.pop_front();
+        if (!exists(queued_slave.first)) {
+            cz_trace("?hub(0x" << this << "): unknown slave(0x" << queued_slave.first << ").");
             return;
         }
 
         // Have it run until it passes control back to us.
-        slave->resume();
-
-        // Check if the fiber has just completed execution.
-        if (slave->myTask.closing()) {
-            // TODO: check for exception in fiber.
-            cz_trace("-slave(0x" << slave->myFiber.handle() << ")");
-
-            // Mark the task as collected and kill the slave.
-            slave->myTask.myState = Task::Dead;
-            slave->myTask.mySlave = 0;
-            mySlaves.erase(slave); delete slave;
-        }
+        queued_slave.first->resume(queued_slave.second);
     }
 
     void Hub::resume_pending_slaves ()
     {
-        // "Steal" all queued slaves.
-        const SlaveQueue queue = myQueue; myQueue.clear();
+        // "Steal" all queued slaves.  Note we intentionally iterate over a
+        // different queue because we don't want to include any slaves that are
+        // queued as a result of resuming the currently queued slaves.  This is
+        // done to avoid starting I/O tasks.
+        SlaveQueue queue;
+        myQueue.swap(queue);
 
-        std::for_each(queue.begin(), queue.end(),
-                      std::mem_fun(&Slave::resume));
+        // Resume all of them.
+        SlaveQueue::iterator current = queue.begin();
+        const SlaveQueue::iterator end = queue.end();
+        for (; current != end; ++current) {
+            current->first->resume(current->second);
+        }
     }
 
-    void Hub::schedule (Slave& slave)
+    void Hub::schedule (Slave& slave, Request * request)
     {
-        myQueue.push_back(&slave);
+        cz_trace(">hub(0x" << this << "): scheduling slave(0x" << &slave << ")");
+        myQueue.push_back(std::make_pair(&slave, request));
     }
 
     void Hub::resume ()
@@ -218,8 +217,9 @@ namespace cz {
         : myHub(hub)
         , myTask(task)
         , myFiber(w32::mt::Fiber::function<&Slave::entry>(), this)
+        , myLastRequest(0)
     {
-        cz_trace("+slave(0x" << myFiber.handle() << ")");
+        cz_trace("+slave(0x" << this << ")");
     }
 
 #ifdef _MSC_VER
@@ -258,15 +258,27 @@ namespace cz {
         Slave& self = *static_cast<Slave*>(context);
 
         // Alive for the first time.
-        cz_trace("@slave(0x" << self.myFiber.handle() << ")");
+        cz_trace("@slave(0x" << &self << ")");
 
         // Enter application code.
         { const Task::Online _(self.myTask, self);
-            self.myTask.run();
+            try {
+                self.myTask.run();
+            }
+            catch (const w32::Error& error)
+            {
+                cz_trace("?slave(0x" << self.myFiber.handle()
+                    << "): aborted by uncaught Win32 error: " << error << ".");
+            }
+            catch (...)
+            {
+                cz_trace("?slave(0x" << self.myFiber.handle()
+                    << "): aborted by uncaught exception.");
+            }
         }
 
         // Just completed execution.
-        cz_trace("!slave(0x" << self.myFiber.handle() << ")");
+        cz_trace("!slave(0x" << &self << ")");
 
         // Let the application know that the hub has one less slave.
         self.myHub.forget(&self);
@@ -280,22 +292,36 @@ namespace cz {
         // hub, even if it is accidentally resumed after it has supposedly
         // completed.
         while (true) {
-            cz_trace("?slave(0x" << self.myFiber.handle() << "): already dead!");
+            cz_trace("?slave(0x" << &self << "): already dead!");
             self.myHub.resume();
         }
     }
 
-    void Hub::Slave::resume ()
+    void Hub::Slave::resume (Request * request)
     {
         // Note: this function is always called by the hub!
         if (!myHub.running()) {
             throw (std::exception("Only the hub can resume slaves!"));
         }
 
+        myLastRequest = request;
         myFiber.yield_to();
+        myLastRequest = 0;
 
         // Hub has just been resumed.
         cz_trace("@hub(0x" << &myHub << ")");
+
+        // Check if the fiber has just completed execution.
+        if (myTask.closing()) {
+            // TODO: check for exception in fiber.
+            cz_trace("-slave(0x" << myFiber.handle() << ")");
+
+            // Mark the task as collected and kill the slave.
+            myTask.myState = Task::Dead;
+            myTask.mySlave = 0;
+
+            myHub.mySlaves.erase(this); delete this;
+        }
     }
 
     void Hub::Slave::resume_later ()
@@ -314,6 +340,11 @@ namespace cz {
         resume_later(), myHub.resume();
 
         cz_trace("@slave(0x" << myFiber.handle() << ")");
+    }
+
+    Request * Hub::Slave::last_request () const
+    {
+        return (myLastRequest);
     }
 
 }

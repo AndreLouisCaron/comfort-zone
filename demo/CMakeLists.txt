@@ -24,11 +24,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-set(demo_headers
-)
-set(demo_sources
-  demo.cpp
-)
 set(demo_libraries
   ${w32_libraries}
   comfort-zone
@@ -38,7 +33,24 @@ set(demo_libraries
 )
 
 add_executable(demo
-  ${demo_headers}
-  ${demo_sources}
+  "demo.cpp"
 )
 target_link_libraries(demo ${demo_libraries})
+
+
+add_executable(echo-server
+  "echo-server.cpp"
+)
+target_link_libraries(echo-server ${demo_libraries})
+
+
+add_executable(echo-client
+  "echo-client.cpp"
+)
+target_link_libraries(echo-client ${demo_libraries})
+
+
+add_executable(tcp-tunnel
+  "tcp-tunnel.cpp"
+)
+target_link_libraries(tcp-tunnel ${demo_libraries})

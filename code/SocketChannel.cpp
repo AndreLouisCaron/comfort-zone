@@ -68,6 +68,16 @@ namespace {
 
 namespace cz {
 
+    SocketChannel::SocketChannel (Engine& engine)
+        : myEngine(engine)
+        , myStream(w32::net::tcp::Stream()) // Note: real (unconnected) socket.
+        , myHost()
+        , myPeer()
+    {
+        // Make sure we receive I/O completion notifications :-)
+        myEngine.completion_port().bind(myStream, &myEngine);
+    }
+
     SocketChannel::SocketChannel (Engine& engine,
                                   w32::net::StreamSocket& stream,
                                   w32::net::ipv4::EndPoint host,
@@ -93,6 +103,14 @@ namespace cz {
     w32::net::StreamSocket& SocketChannel::socket ()
     {
         return (myStream);
+    }
+
+    void SocketChannel::reset ()
+    {
+        myStream.linger(0);
+        myStream = w32::net::tcp::Stream(); // Note: real (unconnected) socket.
+        myHost = w32::net::ipv4::EndPoint();
+        myPeer = w32::net::ipv4::EndPoint();
     }
 
     size_t SocketChannel::get (void * data, size_t size)
@@ -196,6 +214,204 @@ namespace cz {
         }
 
         return (new SocketChannel(myRequest.engine(), myStream, myHost, myPeer));
+    }
+
+
+    SocketGetRequest::SocketGetRequest (Engine& engine, SocketChannel& channel, void * context)
+        : myRequest(engine, context)
+        , myChannel(channel)
+        , myState(Idle)
+        , myResult(0)
+    {
+    }
+
+    void SocketGetRequest::start (void * data, size_t size)
+    {
+        cz_trace("*request(0x" << &myRequest << "): start");
+        if (myChannel.socket().get(data, size, myRequest.data(), myResult))
+        {
+            // The request object's contents MUST NOT be used, its contents
+            // cannot be trusted because the call completed synchronously.
+            myRequest.reset();
+
+            if (myResult == 0) {
+                myState = Dead;
+                return;
+            }
+
+            // NOTE: after this, `.ready()` will return true and the
+            //       application will be able to collect the results
+            //       immediately.
+        }
+        myState = Busy;
+    }
+
+    bool SocketGetRequest::ready () const
+    {
+        return ((myState != Idle) && myRequest.ready());
+    }
+
+    bool SocketGetRequest::is (Request * request) const
+    {
+        return (request == &myRequest);
+    }
+
+    size_t SocketGetRequest::result ()
+    {
+        // The hub has resumed us, collect results!
+        const w32::io::Notification notification = myRequest.notification();
+
+        if (notification.disconnected()) {
+            // Peer forced disconnection, close connection.
+            myState = Dead;
+            return (0);
+        }
+
+        if (notification.aborted()) {
+            // Was cancelled by application, close connection.
+            myState = Dead;
+            return (0);
+        }
+
+        // Propagate I/O exception to the caller if necessary.
+        notification.report_error();
+
+        // Let the caller know just how much data we received.
+        return ((myResult > 0)? myResult : notification.size());
+     }
+
+    void SocketGetRequest::reset ()
+    {
+        myRequest.reset();
+        myState = Idle;
+        myResult = 0;
+    }
+
+    void SocketGetRequest::reset (void * context)
+    {
+        myRequest.reset(context);
+        myState = Idle;
+        myResult = 0;
+    }
+
+    void SocketGetRequest::abort ()
+    {
+        // Will cause I/O completion notification to be posted to the engine's
+        // completion port and will be picked up later.
+        myChannel.socket().cancel(myRequest.data());
+
+        // TODO: is it useful for the application to know whether an operation
+        //       was succesfully canceled or not?  They will receive a
+        //       completion notification regardless...
+    }
+
+    bool SocketGetRequest::eof () const
+    {
+        return (myState == Dead);
+    }
+
+    void * SocketGetRequest::context () const
+    {
+        return (myRequest.context());
+    }
+
+
+    SocketPutRequest::SocketPutRequest (Engine& engine, SocketChannel& channel, void * context)
+        : myRequest(engine, context)
+        , myChannel(channel)
+        , myState(Idle)
+        , myResult(0)
+    {
+    }
+
+    void SocketPutRequest::start (const void * data, size_t size)
+    {
+        cz_trace("*request(0x" << &myRequest << "): start");
+        if (myChannel.socket().put(data, size, myRequest.data(), myResult))
+        {
+            // NOTE: when the send operation is successful and completes
+            //       synchronously, it still emits a completion notification,
+            //       so we should ignore the result even if it's already
+            //       available.
+
+            // The request object's contents MUST NOT be used, its contents
+            // cannot be trusted because the call completed synchronously.
+            myRequest.reset();
+
+            // NOTE: after this, `.ready()` will return true and the
+            //       application will be able to collect the results
+            //       immediately.
+        }
+        myState = Busy;
+    }
+
+    bool SocketPutRequest::ready () const
+    {
+        return ((myState == Busy) && myRequest.ready());
+    }
+
+    bool SocketPutRequest::is (Request * request) const
+    {
+        return (request == &myRequest);
+    }
+
+    size_t SocketPutRequest::result ()
+    {
+        // The hub has resumed us, collect results!
+        const w32::io::Notification notification = myRequest.notification();
+
+        if (notification.disconnected()) {
+            // Peer forced disconnection, socke is unusable.
+            myState = Dead;
+            return (0);
+        }
+
+        if (notification.aborted()) {
+            // Was cancelled by application, socket is unusable.
+            myState = Dead;
+            return (0);
+        }
+
+        // Propagate I/O exception to the caller if necessary.
+        notification.report_error();
+
+        // Let the caller know just how much data we received.
+        return ((myResult > 0)? myResult : notification.size());
+     }
+
+    void SocketPutRequest::reset ()
+    {
+        myRequest.reset();
+        myState = Idle;
+        myResult = 0;
+    }
+
+    void SocketPutRequest::reset (void * context)
+    {
+        myRequest.reset(context);
+        myState = Idle;
+        myResult = 0;
+    }
+
+    void SocketPutRequest::abort ()
+    {
+        // Will cause I/O completion notification to be posted to the engine's
+        // completion port and will be picked up later.
+        myChannel.socket().cancel(myRequest.data());
+
+        // TODO: is it useful for the application to know whether an operation
+        //       was succesfully canceled or not?  They will receive a
+        //       completion notification regardless...
+    }
+
+    bool SocketPutRequest::eof () const
+    {
+        return (myState == Dead);
+    }
+
+    void * SocketPutRequest::context () const
+    {
+        return (myRequest.context());
     }
 
 }

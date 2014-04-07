@@ -55,6 +55,7 @@ namespace cz {
         /* class methods. */
     public:
         // Yields entry point for thread pool.
+        static w32::tp::Timer::Callback time_callback ();
         static w32::tp::Work::Callback work_callback ();
         static w32::tp::Wait::Callback wait_callback ();
 
@@ -75,7 +76,7 @@ namespace cz {
     public:
         Request (Engine& engine, void * context=0);
 
-        virtual ~Request ();
+        ~Request ();
 
         /* methods. */
     public:
@@ -110,6 +111,12 @@ namespace cz {
          * @brief Prepare for issuing another request.
          */
         void reset ();
+
+        /*!
+         * @internal
+         * @brief Prepare for issuing another request.
+         */
+        void reset (void * context);
 
         /*!
          * @internal

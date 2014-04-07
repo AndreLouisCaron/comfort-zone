@@ -174,8 +174,10 @@ namespace {
 
                 // Accept 1st connection!
                 char data[1024]; cz::size_t size = sizeof(data);
+#if 0
                 std::auto_ptr<cz::Channel> stream
                     (listener->accept(data, size));
+#endif
 
                 std::cerr
                     << "#task(sample-3): 3"

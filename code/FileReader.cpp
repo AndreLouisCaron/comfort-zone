@@ -27,6 +27,7 @@
 #include "FileReader.hpp"
 #include "Engine.hpp"
 #include "Hub.hpp" // TODO: include "Slave.hpp"
+#include "trace.hpp"
 
 namespace cz {
 
@@ -63,23 +64,34 @@ namespace cz {
     }
 
 
-    GetRequest::GetRequest (Engine& engine, w32::io::InputStream stream)
-        : myRequest(engine)
+    GetRequest::GetRequest (Engine& engine, w32::io::InputStream stream, void * context)
+        : myRequest(engine, context)
         , myStream(stream)
+        , myState(Idle)
+        , myResult(0)
     {
     }
 
     void GetRequest::start (void * data, size_t size)
     {
-        if (!myStream.get(data, size, myRequest.data()))
+        cz_trace("*request(0x" << &myRequest << "): start");
+        if (myStream.get(data, size, myRequest.data(), myResult))
         {
-            // Failed!?
+            // The request object's contents MUST NOT be used, its contents
+            // cannot be trusted because the call completed synchronously.
+            myRequest.reset();
         }
+        myState = Busy;
     }
 
     bool GetRequest::ready () const
     {
-        return (myRequest.ready());
+        return ((myState == Busy) && myRequest.ready());
+    }
+
+    bool GetRequest::is (Request * request) const
+    {
+        return (request == &myRequest);
     }
 
     size_t GetRequest::result ()
@@ -87,16 +99,38 @@ namespace cz {
         // The hub has resume us, collect results!
         const w32::io::Notification notification = myRequest.notification();
 
+        if (notification.disconnected()) {
+            return (0); // Peer forced disconnection, close connection.
+        }
+
+        if (notification.aborted()) {
+            return (0); // Was cancelled by application, close connection.
+        }
+
         // Propagate I/O exception to the caller if necessary.
         notification.report_error();
 
         // Let the caller know just how much data we received.
-        return (notification.size());
-    }
+        return ((myResult > 0)? myResult : notification.size());
+     }
 
     void GetRequest::reset ()
     {
         myRequest.reset();
+        myResult = 0;
+        myState = Idle;
+    }
+
+    void GetRequest::reset (void * context)
+    {
+        myRequest.reset(context);
+        myResult = 0;
+        myState = Idle;
+    }
+
+    void * GetRequest::context () const
+    {
+        return (myRequest.context());
     }
 
 }

@@ -32,6 +32,7 @@
 
 #include <deque>
 #include <set>
+#include <utility>
 
 namespace cz {
 
@@ -53,7 +54,7 @@ namespace cz {
         class Slave;
 
     private:
-        typedef std::deque<Slave*> SlaveQueue;
+        typedef std::deque< std::pair<Slave*,Request*> > SlaveQueue;
 
     public:
         /*!
@@ -110,13 +111,17 @@ namespace cz {
 
         // Schedule slave for execution.
         // TODO: make this parameter a `Task`?
-        void schedule (Slave& slave);
+        void schedule (Slave& slave, Request * request=0);
 
         /*!
          * @internal
          * @brief Yield control to the hub.
+         * @pre The caller is a slave of this hub.
+         * @pre One or more asynchron ous requests have been started, or @c
+         *  resume_later() has been called.
          *
-         * @attention This function should only be called by the slaves.
+         * @attention This function should only be called by the slaves after
+         *  they initiate one or more asynchronous requests.
          */
         void resume ();
 
@@ -172,7 +177,7 @@ namespace cz {
         bool closing () const;
         bool dead () const;
 
-        // Yield to hub.
+        // Temporarily yield to hub, get resumed after dispatching events.
         void pause ();
 
     protected:
@@ -225,6 +230,8 @@ namespace cz {
 
         w32::mt::Fiber myFiber;
 
+        Request * myLastRequest;
+
         /* construction. */
     public:
         Slave (Hub& hub, Task& task);
@@ -247,10 +254,12 @@ namespace cz {
         /*!
          * @internal
          * @brief Yield control to this slave.
+         * @param request Pointer to the request that caused the slave to be
+         *  resumed.
          *
          * @attention This function should only be called by the Hub.
          */
-        void resume ();
+        void resume (Request * request=0);
 
         /*!
          * @brief Queue task in hub, keep control.
@@ -262,6 +271,8 @@ namespace cz {
          * @todo Figure out if there are valid use cases for this function.
          */
         void resume_later ();
+
+        Request * last_request () const;
 
     private:
         static void entry (w32::mt::Fiber::Context context);

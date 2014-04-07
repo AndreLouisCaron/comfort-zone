@@ -27,6 +27,7 @@
 #include "FileWriter.hpp"
 #include "Engine.hpp"
 #include "Hub.hpp" // TODO: include "Slave.hpp"
+#include "trace.hpp"
 
 namespace cz {
 
@@ -61,23 +62,34 @@ namespace cz {
     }
 
 
-    PutRequest::PutRequest (Engine& engine, w32::io::OutputStream stream)
-        : myRequest(engine)
+    PutRequest::PutRequest (Engine& engine, w32::io::OutputStream stream, void * context)
+        : myRequest(engine, context)
         , myStream(stream)
+        , myState(Idle)
+        , myResult(0)
     {
     }
 
     void PutRequest::start (const void * data, size_t size)
     {
-        if (!myStream.put(data, size, myRequest.data()))
+        cz_trace("*request(0x" << &myRequest << "): start");
+        if (myStream.put(data, size, myRequest.data(), myResult))
         {
-            // Failed!?
+            // The request object's contents MUST NOT be used, its contents
+            // cannot be trusted because the call completed synchronously.
+            myRequest.reset();
         }
+        myState = Busy;
     }
 
     bool PutRequest::ready () const
     {
-        return (myRequest.ready());
+        return ((myState == Busy) && myRequest.ready());
+    }
+
+    bool PutRequest::is (Request * request) const
+    {
+        return (request == &myRequest);
     }
 
     size_t PutRequest::result ()
@@ -85,16 +97,38 @@ namespace cz {
         // The hub has resume us, collect results!
         const w32::io::Notification notification = myRequest.notification();
 
+        if (notification.disconnected()) {
+            return (0); // Peer forced disconnection, close connection.
+        }
+
+        if (notification.aborted()) {
+            return (0); // Was cancelled by application, close connection.
+        }
+
         // Propagate I/O exception to the caller if necessary.
         notification.report_error();
 
-        // Let the caller know just how much data we received.
-        return (notification.size());
-    }
+        // Let the caller know just how much data we send.
+        return ((myResult > 0)? myResult : notification.size());
+ }
 
     void PutRequest::reset ()
     {
         myRequest.reset();
+        myResult = 0;
+        myState = Idle;
+    }
+
+    void PutRequest::reset (void * context)
+    {
+        myRequest.reset(context);
+        myResult = 0;
+        myState = Idle;
+    }
+
+    void * PutRequest::context () const
+    {
+        return (myRequest.context());
     }
 
 }

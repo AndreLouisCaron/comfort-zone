@@ -25,6 +25,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(cz_headers
+  Buffer.hpp
   BlockingReader.hpp
   BlockingWriter.hpp
   Computation.hpp
@@ -38,6 +39,7 @@ set(cz_headers
   Stream.hpp
 )
 set(cz_sources
+  Buffer.cpp
   BlockingReader.cpp
   BlockingWriter.cpp
   Computation.cpp

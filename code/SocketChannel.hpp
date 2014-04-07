@@ -41,6 +41,12 @@ namespace cz {
     /*!
      * @ingroup resources
      * @brief Channel that reads from, and writes to, a TCP socket.
+     *
+     * @see Listener
+     * @see SocketGetRequest
+     * @see SocketPutRequest
+     * @see ConnectRequest
+     * @see AcceptRequest
      */
     class SocketChannel :
         public Channel
@@ -55,6 +61,11 @@ namespace cz {
 
         /* constructor. */
     public:
+        /*!
+         * @brief Create an unconnected channel (for async connect/accept).
+         */
+        SocketChannel (Engine& engine);
+
         explicit SocketChannel (Engine& engine,
                                 w32::net::StreamSocket& stream,
                                 w32::net::ipv4::EndPoint host,
@@ -66,6 +77,8 @@ namespace cz {
         const w32::net::ipv4::EndPoint& peer () const;
 
         w32::net::StreamSocket& socket ();
+
+        void reset ();
 
         /* overrides. */
     public:
@@ -114,6 +127,118 @@ namespace cz {
     private:
         // TODO: figure out how to use this properly.
         void abort();
+    };
+
+
+    /*!
+     * @ingroup requests
+     * @brief %Request to read from a TCP socket.
+     *
+     * @see SocketChannel
+     */
+    class SocketGetRequest
+    {
+        /* data. */
+    private:
+        Request myRequest;
+        SocketChannel& myChannel;
+
+        // Used to prevent `ready()` from returning the same value after _and
+        // before_ the overlapped operation has completed (the default state
+        // makes `ready()` return `true`).
+        enum State {
+            Idle,
+            Busy,
+            Dead,
+        } myState;
+
+        w32::dword myResult;
+
+    public:
+        SocketGetRequest (Engine& engine, SocketChannel& channel, void * context=0);
+
+        /* methods. */
+    public:
+        void start (void * data, size_t size);
+        bool ready () const;
+
+        bool is (Request * request) const;
+
+        // Note: `close()` is implicit (native async request).
+
+        size_t result ();
+
+        // call before calling `start()` again.
+        void reset ();
+        void reset (void * context);
+
+        void abort ();
+
+        bool eof () const;
+
+        void * context () const;
+
+        template<typename T>
+        T * context () const
+        {
+            return (myRequest.context<T>());
+        }
+    };
+
+
+    /*!
+     * @ingroup requests
+     * @brief %Request to write to a TCP socket.
+     *
+     * @see SocketChannel
+     */
+    class SocketPutRequest
+    {
+        /* data. */
+    private:
+        Request myRequest;
+        SocketChannel& myChannel;
+
+        // Used to prevent `ready()` from returning the same value after _and
+        // before_ the overlapped operation has completed (the default state
+        // makes `ready()` return `true`).
+        enum State {
+            Idle,
+            Busy,
+            Dead,
+        } myState;
+
+        w32::dword myResult;
+
+    public:
+        SocketPutRequest (Engine& engine, SocketChannel& channel, void * context=0);
+
+        /* methods. */
+    public:
+        void start (const void * data, size_t size);
+        bool ready () const;
+
+        bool is (Request * request) const;
+
+        // Note: `close()` is implicit (native async request).
+
+        size_t result ();
+
+        // call before calling `start()` again.
+        void reset ();
+        void reset (void * context);
+
+        void abort ();
+
+        bool eof () const;
+
+        void * context () const;
+
+        template<typename T>
+        T * context () const
+        {
+            return (myRequest.context<T>());
+        }
     };
 
 }

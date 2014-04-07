@@ -29,6 +29,7 @@
 
 #include <w32.hpp>
 #include <w32.io.hpp>
+#include <w32.net.hpp>
 
 #include "Request.hpp"
 #include "Stream.hpp"
@@ -70,19 +71,41 @@ namespace cz {
         Request myRequest;
         w32::io::InputStream myStream;
 
+        // Used to prevent `ready()` from returning the same value after _and
+        // before_ the overlapped operation has completed (the default state
+        // makes `ready()` return `true`).
+        enum State {
+            Idle,
+            Busy,
+        } myState;
+
+        w32::dword myResult;
+
     public:
-        GetRequest (Engine& engine, w32::io::InputStream stream);
+        GetRequest (Engine& engine, w32::io::InputStream stream, void * context=0);
 
         /* methods. */
     public:
         void start (void * data, size_t size);
         bool ready () const;
 
+        bool is (Request * request) const;
+
         // Note: `close()` is implicit (native async request).
 
         size_t result ();
 
-        void reset (); // call before calling `start()` again.
+        // call before calling `start()` again.
+        void reset ();
+        void reset (void * context);
+
+        void * context () const;
+
+        template<typename T>
+        T * context () const
+        {
+            return (myRequest.context<T>());
+        }
 
     private:
         // TODO: implement this.

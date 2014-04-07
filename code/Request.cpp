@@ -44,6 +44,12 @@ namespace cz {
                                       &Request::release_wait_client>());
     }
 
+    w32::tp::Timer::Callback Request::time_callback ()
+    {
+        return (w32::tp::Timer::method<Request,
+                                       &Request::release_wait_client>());
+    }
+
     Request::Request (Engine& engine, void * context)
         : myData()
         , myEngine(engine)
@@ -61,6 +67,7 @@ namespace cz {
     {
         cz_trace("-request(0x" << this << ")");
 
+        // Make sure to clean this in case it gets used after it's been freed.
         myData.request = 0;
         ::ZeroMemory(&myData, sizeof(myData));
     }
@@ -102,6 +109,14 @@ namespace cz {
         cz_trace("*request(0x" << this << "): reset");
         ::ZeroMemory(&myData, sizeof(myData));
         myData.request = this;
+    }
+
+    void Request::reset (void * context)
+    {
+        cz_trace("*request(0x" << this << "): reset");
+        ::ZeroMemory(&myData, sizeof(myData));
+        myData.request = this;
+        myContext = context;
     }
 
     const w32::io::Notification& Request::notification () const

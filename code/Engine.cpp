@@ -68,6 +68,7 @@ namespace cz {
             throw (std::exception("Hub can't complete requests!"));
         }
 
+        cz_trace("$port(" << myCompletionPort.handle() << "): give");
         myCompletionPort.post(size, data, &request.data());
     }
 
@@ -77,28 +78,51 @@ namespace cz {
         // notifications adressed to another engine.
         if (notification.handler<Engine>() != this) {
             cz_trace("?engine(0x" << this << "): received notification for engine(0x" << notification.handler<Engine>() << ").");
+
+            ::DebugBreak();
+            std::cerr
+                << "WARNING: notification received by wrong engine!"
+                << std::endl;
         }
 
         // Access the asynchronous request object.
         if (!notification.transfer()) {
             cz_trace("?engine(): empty notification!");
-            // ... failed transfer, hub exiting, bug!?
+
+            ::DebugBreak();
+            std::cerr
+                << "WARNING: empty notification!"
+                << std::endl;
+            return;
         }
         Request *const request = static_cast<Request::Data*>
             (&notification.transfer()->data())->request;
         cz_trace("<request(0x" << request << ")");
+
+        if (request == 0) {
+            cz_trace("?engine(): no request reference!");
+
+            ::DebugBreak();
+            std::cerr
+                << "WARNING: no request reference!"
+                << std::endl;
+            return;
+        }
 
         // Store the notification for use by the initiating fiber.
         request->myNotification = notification;
 
         // The fiber that was waiting for this notification can now resume,
         // reschedule it.
-        myHub.schedule(*request->mySlave);
+        myHub.schedule(*request->mySlave, request);
     }
 
     void Engine::wait_for_notification ()
     {
-        process(myCompletionPort.next());
+        cz_trace("$port(" << myCompletionPort.handle() << "): take");
+        const w32::io::Notification notification = myCompletionPort.next();
+        cz_trace("$port(" << myCompletionPort.handle() << "): took");
+        process(notification);
     }
 
     bool Engine::process_notification ()
@@ -109,6 +133,11 @@ namespace cz {
 
         // Wait for notification of asynchronous operation completion.
         w32::io::Notification notification = myCompletionPort.peek();
+
+        // TODO: make a distinction between a timeout on the completion port
+        //       wait operation and a timeout in a real asynchronous operation
+        //       dispatched to an I/O device (... but timeout doesn't apply to
+        //       asynchronous I/O operations!)
         if (notification.timeout()) {
             return (false);
         }
@@ -336,6 +365,11 @@ namespace cz {
         //       notification into the completion port for the hub to process.
     }
 
+    bool WaitRequest::is (const Request * request) const
+    {
+        return (request == &myRequest);
+    }
+
     bool WaitRequest::ready () const
     {
         return (myRequest.ready());
@@ -356,5 +390,87 @@ namespace cz {
         }
         myRequest.reset();
     }
+
+    TimeRequest::TimeRequest (Engine& engine, w32::dword milliseconds, void * context)
+        : myRequest(engine, context)
+        , myJob(engine.myThreadPoolQueue, &myRequest, Request::time_callback())
+        , myDelai(milliseconds)
+    {
+    }
+
+    bool TimeRequest::is (const Request * request) const
+    {
+        return (request == &myRequest);
+    }
+
+    void TimeRequest::start ()
+    {
+        // Mark the request as "in progress" before starting the job, otherwise
+        // the kernel may preempt us and satisfy the wait before we can update
+        // the request status.
+        myRequest.start();
+
+        // Schedule wait in thread pool.  When the waitable object is signaled,
+        // the `Request` object's `wait_callback` will post a completion
+        // notification to the I/O completion port and the hub will resume us.
+        myJob.start(myDelai);
+
+        // Note: even if the system can technically preempt the current thread
+        //       at this point and execute the entire computation before
+        //       returning control to us, the timeout ends up posting a
+        //       notification into the completion port for the hub to process.
+    }
+
+    bool TimeRequest::abort ()
+    {
+        // Ensure that the thread pool's queue doesn't surprise us by executing
+        // the request!  This is simple to implement, but difficult to explain,
+        // so bear with me.  Basically, we'll always end up in one of three
+        // different scenarios, let's see how we can handle each of them.
+
+        // 1. If the timer has not yet elapsed, stop waiting for it to expire.
+        myJob.cancel();
+
+        // 2. If the timer has expired and the callback is already queued for
+        //    execution, don't let it start.
+        // 3. If the callback is already executing in another thread, let it
+        //    complete (in which case, a notification will be posted to the
+        //    completion port despite our attempt to abort it).
+        myJob.wait(true);
+
+        // At this point, either the callback has finished executing (case #3)
+        // or will never execute (case #2).  We can't ask the completion port
+        // if the notification has been queued and thus which of these two
+        // cases applies.  Also, we can't ask the completion port discard this
+        // notification, so the application will need to handle the fact that
+        // the notification is already queued and will eventually arrive.  If
+        // we ended up in case #3, the caller must expect a completion
+        // notification.  They can just see if the async request is ready after
+        // calling this method.
+
+        return (!myRequest.ready());
+    }
+
+    bool TimeRequest::ready () const
+    {
+        return (myRequest.ready());
+    }
+
+    void TimeRequest::close ()
+    {
+        myRequest.close();
+    }
+
+    void TimeRequest::reset ()
+    {
+        if (!myRequest.ready())
+        {
+            cz_trace("?request(0x" << &myRequest << ") request incomplete.");
+            // TODO: log possible bug.
+            myJob.wait();
+        }
+        myRequest.reset();
+    }
+
 
 }

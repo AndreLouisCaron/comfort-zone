@@ -27,11 +27,16 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <w32.hpp>
+
+#include "Buffer.hpp"
+
+
+// TODO: remove all blocking operations, these interfaces are not actually
+//       useful (we actually need to use concrete classes directly in
+//       practice).
+
 
 namespace cz {
-
-    typedef w32::dword size_t;
 
     class Engine;
 

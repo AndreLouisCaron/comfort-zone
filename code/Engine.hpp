@@ -99,6 +99,7 @@ namespace cz {
     friend class Request;
 
     // Async requests need access to the thread pool.
+    friend class TimeRequest;
     friend class WaitRequest;
     friend class WorkRequest;
 
@@ -261,14 +262,83 @@ namespace cz {
         w32::Waitable myWaitable;
         w32::tp::Wait myJob;
 
+        /* construction. */
     public:
         WaitRequest (Engine& engine, w32::Waitable waitable);
 
         /* methods. */
     public:
         void start ();
-        bool ready () const;
+
+        bool is (const Request * request) const;
+
+        /*!
+         * @internal
+         * @brief Called from thread pool to unblock the hub.
+         * @post @c ready() returns @c true.
+         */
         void close ();
+
+        bool ready () const;
+        void reset (); // call before calling `start()` again.
+    };
+
+
+    /*!
+     * @ingroup requests
+     * @brief %Request to wait for a waitable timer to expire.
+     */
+    class TimeRequest
+    {
+        /* data. */
+    private:
+        Request myRequest;
+        w32::tp::Timer myJob;
+        w32::dword myDelai;
+
+    public:
+        TimeRequest (Engine& engine, w32::dword milliseconds, void * context=0);
+
+        /* methods. */
+    public:
+        bool is (const Request * request) const;
+
+        void start ();
+
+        /*!
+         * @brief Attempt to cancel the timer.
+         * @return @c true if the timer had already expired, else @c false.
+         *
+         * @attention If the timer has already expired, a completion
+         *  notification has already been posted to the completion port (we
+         *  can't do anything about this) and the application should prepare to
+         *  process it.  Always check the return value!
+         *
+         * @code
+         *  TimeRequest request(...);
+         *  request.start();
+         *
+         *  // ... some time later ...
+         *
+         *  if (!request.abort()) {
+         *    // Timer has already expired, notification will arrive despite
+         *    // your attempt to cancel it.  Application should behave as if
+         *    // 
+         *  }
+         * @endcode
+         *
+         * @see ready
+         */
+        bool abort ();
+
+        /*!
+         * @internal
+         * @brief Called from thread pool to unblock the hub.
+         * @post @c ready() returns @c true.
+         */
+        void close ();
+
+        bool ready () const;
         void reset (); // call before calling `start()` again.
     };
 
@@ -291,8 +361,15 @@ namespace cz {
         /* methods. */
     public:
         void start ();
-        bool ready () const;
+
+        /*!
+         * @internal
+         * @brief Called from thread pool to unblock the hub.
+         * @post @c ready() returns @c true.
+         */
         void close ();
+ 
+        bool ready () const;
         void reset (); // call before calling `start()` again.
     };
 
