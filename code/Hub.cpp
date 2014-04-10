@@ -118,7 +118,7 @@ namespace cz {
         SlaveQueue::iterator current = queue.begin();
         const SlaveQueue::iterator end = queue.end();
         for (; current != end; ++current) {
-            current->first->resume(current->second);
+            (current->first)->resume(current->second);
         }
     }
 
@@ -145,6 +145,7 @@ namespace cz {
         if (myState != Running)
         {
             if (myState == Closing) {
+                cz_trace("hub is closing, aborting slave.");
                 throw (Shutdown());
             }
 
@@ -178,7 +179,7 @@ namespace cz {
             // Schedule execution of ALL slaves.
             std::set<Slave*>::iterator current = mySlaves.begin();
             const std::set<Slave*>::iterator end = mySlaves.end();
-            while (current != end) {
+            for (; current != end; ++current) {
                 (*current)->resume_later();
             }
 
@@ -319,20 +320,16 @@ namespace cz {
         cz_trace("@slave(0x" << &self << ")");
 
         // Enter application code.
-        { const Task::Online _(self.myTask, self);
-            try {
-                self.myTask.run();
-            }
-            catch (const w32::Error& error)
-            {
-                cz_trace("?slave(0x" << self.myFiber.handle()
-                    << "): aborted by uncaught Win32 error: " << error << ".");
-            }
-            catch (...)
-            {
-                cz_trace("?slave(0x" << self.myFiber.handle()
-                    << "): aborted by uncaught exception.");
-            }
+        try
+        {
+            const Task::Online _(self.myTask, self);
+            self.myTask.run();
+        }
+        catch (const Shutdown&) {
+            cz_trace("Slave 0x" << &self << " aborted.");
+        }
+        catch (...) {
+            cz_trace("Uncaught exception in slave 0x" << &self << ".");
         }
 
         // Just completed execution.
