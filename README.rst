@@ -93,12 +93,19 @@ Compiling
    You can add the ``-DFIO_TRACE=ON`` option to enable logging of context
    switches, I/O operations and other key elements in execution.
 
-#. Compile the program.
+#. Compile the library and, its demo programs and its tests.
 
    ::
 
       rem: build all targets.
       nmake
+
+#. Run the tests.
+
+   ::
+
+      rem: build all targets.
+      nmake /A test
 
 .. _`Microsoft Visual Studio`: http://www.microsoft.com/visualstudio/en-us
 .. _Git: http://git-scm.com/

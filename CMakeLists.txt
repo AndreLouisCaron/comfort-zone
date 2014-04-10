@@ -119,6 +119,10 @@ if(${PROJECT_NAME} STREQUAL ${CMAKE_PROJECT_NAME})
   # Make sure `comfort-zone.hpp` can be resolved.
   include_directories(${cz_include_dir})
 
+  # Build test suite.
+  enable_testing()
+  add_subdirectory(test)
+
   # Build demo projects.
   add_subdirectory(demo)
 

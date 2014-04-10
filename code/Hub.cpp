@@ -123,8 +123,27 @@ namespace cz {
         SlaveQueue queue;
         queue.swap(myQueue);
 
-        std::for_each(queue.begin(), queue.end(),
-                      std::mem_fun(&Slave::resume));
+        SlaveQueue::const_iterator current = queue.begin();
+        const SlaveQueue::const_iterator end = queue.end();
+        for (; (current != end); ++current)
+        {
+            Slave *const slave = *current;
+            // Have it run until it passes control back to us.
+            slave->resume();
+
+            cz_trace("@hub(0x" << this << ")");
+
+            // Check if the fiber has just completed execution.
+            if (slave->myTask.closing()) {
+                // TODO: check for exception in fiber.
+                cz_trace("-slave(0x" << slave->myFiber.handle() << ")");
+
+                // Mark the task as collected and kill the slave.
+                slave->myTask.myState = Task::Dead;
+                slave->myTask.mySlave = 0;
+                mySlaves.erase(slave); delete slave;
+            }
+        }
     }
 
     void Hub::schedule (Slave& slave)
@@ -140,12 +159,15 @@ namespace cz {
         // asynchronous operation(s) we just launch complete(s).
         myMaster.yield_to();
 
+        cz_trace("slave resumed.");
+
         // OK, something completed and the hub has us (the slave).  This is a
         // neat place to check lots of different things, including whether
         // someone has tried to shut down the hub.
         if (myState != Running)
         {
             if (myState == Closing) {
+                cz_trace("hub is closing, aborting slave.");
                 throw (Shutdown());
             }
 
@@ -179,7 +201,7 @@ namespace cz {
             // Schedule execution of ALL slaves.
             std::set<Slave*>::iterator current = mySlaves.begin();
             const std::set<Slave*>::iterator end = mySlaves.end();
-            while (current != end) {
+            for (; current != end; ++current) {
                 (*current)->resume_later();
             }
 
@@ -316,8 +338,16 @@ namespace cz {
         cz_trace("@slave(0x" << self.myFiber.handle() << ")");
 
         // Enter application code.
-        { const Task::Online _(self.myTask, self);
+        try
+        {
+            const Task::Online _(self.myTask, self);
             self.myTask.run();
+        }
+        catch (const Shutdown&) {
+            cz_trace("Slave 0x" << &self << " aborted.");
+        }
+        catch (...) {
+            cz_trace("Uncaught exception in slave 0x" << &self << ".");
         }
 
         // Just completed execution.
