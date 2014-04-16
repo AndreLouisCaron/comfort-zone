@@ -37,6 +37,13 @@
 #include <queue>
 
 
+#if 0
+#   define __trace__(x) do{std::cerr << x << std::endl;}while(0);
+#else
+#   define __trace__(x)
+#endif
+
+
 namespace echo {
 
 
@@ -244,9 +251,7 @@ namespace echo {
             }
 
             if (myTotalConnections > 0) {
-                std::cerr
-                    << myID << ": reusing socket."
-                    << std::endl;
+                __trace__(myID << ": reusing socket.");
             }
 
             // Make sure we don't end up with data leftover from the previous
@@ -255,9 +260,7 @@ namespace echo {
             myPutBuffer.reset();
 
             myID = myServer.next_connection_id();
-            std::cerr
-                << myID << ": +new"
-                << std::endl;
+            __trace__(myID << ": +new");
             myNewRequest.start();
             myActiveRequests |= NEW;
         }
@@ -276,14 +279,10 @@ namespace echo {
                 ::DebugBreak();
             }
 
-            std::cerr
-                << myID << ": #new => client not sending!"
-                << std::endl;
+            __trace__(myID << ": #new => client not sending!");
             if (myNewRequest.abort()) {
                 myActiveRequests &= ~NEW;
-                std::cerr
-                    << myID << ": #new => accept aborted!"
-                    << std::endl;
+                __trace__(myID << ": #new => accept aborted!");
             }
             else {
                 // Client ended up sending data just as we were about to
@@ -303,9 +302,7 @@ namespace echo {
 
             if (myServer.new_socket_aborted_listen())
             {
-                std::cerr
-                    << myID << ": #new => *not* re-using socket!"
-                    << std::endl;
+                __trace__(myID << ": #new => *not* re-using socket!")
 
                 // Close the socket and create a new socket.  At least, this
                 // will allow us to reuse the `Connection` instance, and we'll
@@ -333,9 +330,7 @@ namespace echo {
                 myState = &Connection::disconnected;
             }
             else {
-                std::cerr
-                    << myID << ": #new => re-using socket!"
-                    << std::endl;
+                __trace__(myID << ": #new => re-using socket!");
 
                 // Force connection reset when we disconnect or else we will
                 // end up waiting for the peer to send a shutdown and/or close
@@ -366,9 +361,7 @@ namespace echo {
         // Entry point for the main notification loop.
         void process_notification (cz::Request * request)
         {
-            std::cerr
-                << myID << ": ----"
-                << std::endl;
+            __trace__(": ----");
 
             // Sanity check.
             if (myActiveRequests == 0) {
@@ -392,9 +385,7 @@ namespace echo {
                 return;
             }
 
-            std::cerr
-                << myID << ": +del"
-                << std::endl;
+            __trace__(myID << ": +del");
             myDelRequest.start(true);
             myActiveRequests |= DEL;
             myState = &Connection::disconnecting;
@@ -410,9 +401,7 @@ namespace echo {
                 ::DebugBreak();
             }
 
-            std::cerr
-                << myID << ": +get(" << myGetBuffer.gsize() << ")"
-                << std::endl;
+            __trace__(myID << ": +get(" << myGetBuffer.gsize() << ")");
 
             myGetRequest.start(myGetBuffer.gbase(),
                                myGetBuffer.gsize());
@@ -422,9 +411,7 @@ namespace echo {
                 // WARNING: synchronous completion also triggers completion
                 //          notification; we can't handle synchronous
                 //          completion correctly!
-                std::cerr
-                    << myID << ": *get => synchronous?"
-                    << std::endl;
+                __trace__(myID << ": *get => synchronous?");
             }
             else {
                 // Don't allow slow writers to hold the connection.
@@ -448,9 +435,7 @@ namespace echo {
             const size_t xferred = myGetRequest.result();
             const bool eof = myGetRequest.eof();
             myGetRequest.reset();
-            std::cerr
-                << myID << ": -get => " << xferred
-                << std::endl;
+            __trace__(myID << ": -get => " << xferred);
             if (xferred > 0) {
                 myGetBuffer.gused(xferred);
                 // NOTE: buffer is full or we got everything that has
@@ -524,9 +509,7 @@ namespace echo {
                 ::DebugBreak();
             }
 
-            std::cerr
-                << myID << ": +put(" << myPutBuffer.psize() << ")"
-                << std::endl;
+            __trace__(myID << ": +put(" << myPutBuffer.psize() << ")");
 
             myPutRequest.start(myPutBuffer.pbase(),
                                myPutBuffer.psize());
@@ -536,9 +519,7 @@ namespace echo {
                 // WARNING: synchronous completion also triggers completion
                 //          notification; we can't handle synchronous
                 //          completion correctly!
-                std::cerr
-                    << myID << ": *put => synchronous?"
-                    << std::endl;
+                __trace__(myID << ": *put => synchronous?");
             }
             else {
                 // TODO: don't allow slow readers to hold the connection.
@@ -559,9 +540,7 @@ namespace echo {
 
             const size_t xferred = myPutRequest.result();
             myPutRequest.reset();
-            std::cerr
-                << myID << ": -put => " << xferred
-                << std::endl;
+            __trace__(myID << ": -put => " << xferred);
             if (xferred > 0) {
                 myPutBuffer.pused(xferred);
                 if (myPutBuffer.pdone())
@@ -677,9 +656,7 @@ namespace echo {
             if (myDelRequest.is(request))
             {
                 myActiveRequests &= ~DEL;
-                std::cerr
-                    << myID << ": -del"
-                    << std::endl;
+                __trace__(myID << ": -del");
                 myDelRequest.result();
                 myDelRequest.reset();
             }
@@ -690,9 +667,7 @@ namespace echo {
             if (myNewRequest.is(request))
             {
                 myActiveRequests &= ~NEW;
-                std::cerr
-                    << myID << ": -new => aborted!"
-                    << std::endl;
+                __trace__(myID << ": -new => aborted!");
                 myNewRequest.result();
                 myNewRequest.reset();
             }
@@ -703,9 +678,7 @@ namespace echo {
             if (myPutRequest.is(request))
             {
                 myActiveRequests &= ~PUT;
-                std::cerr
-                    << myID << ": -put => ignored!"
-                    << std::endl;
+                __trace__(myID << ": -put => ignored!");
                 myPutRequest.reset();
             }
 
@@ -715,9 +688,7 @@ namespace echo {
             if (myGetTimeout.is(request))
             {
                 myActiveRequests &= ~GTO;
-                std::cerr
-                    << myID << ": -get timeout => ignored!"
-                    << std::endl;
+                __trace__(myID << ": -get timeout => ignored!");
                 myGetTimeout.reset();
             }
 
@@ -788,9 +759,7 @@ namespace echo {
                     ::DebugBreak();
                 }
 
-                std::cerr
-                    << myID << ": timed out."
-                    << std::endl;
+                __trace__(myID << ": timed out.");
 
                 // Cancel pending get operation.  A follow-up notification will
                 // be posted to indicate that the read operation has succeeded
@@ -818,9 +787,7 @@ namespace echo {
 
     void Server::del_connection (Connection * connection)
     {
-        std::cerr
-            << connection->id() << ": kaboom!"
-            << std::endl;
+        __trace__(connection->id() << ": kaboom!");
         myConnections.erase(connection); delete connection;
     }
 
@@ -933,9 +900,7 @@ namespace echo {
 
             // Track the connection.
             myListenConnections.push_back(connection);
-            std::cerr
-                << connection->id() << ": (new) => listen"
-                << std::endl;
+            __trace__(connection->id() << ": (new) => listen");
 
             // Tell it to start waiting for an incoming connection.
             connection->start_accept();
@@ -1005,9 +970,7 @@ namespace echo {
 
                 if (accept_watcher.is(request))
                 {
-                    std::cerr
-                        << "0: queuing another accept request!"
-                        << std::endl;
+                    __trace__("0: queuing another accept request!");
 
                     // All our accept requests are connected but blocked
                     // waiting for data.  We got signaled because, we have at
@@ -1044,9 +1007,7 @@ namespace echo {
 
                         connection->start_accept();
 
-                        std::cerr
-                            << connection->id() << ": unused => listen"
-                            << std::endl;
+                        __trace__(connection->id() << ": unused => listen");
                         move_connection(myListenConnections,
                                         myUnusedConnections, connection);
                     }
@@ -1089,9 +1050,7 @@ namespace echo {
                         // If the socket is not currently connected, move it to
                         // the active connections set.
                         if (!connection->connected()) {
-                            std::cerr
-                                << connection->id() << ": listen => active"
-                                << std::endl;
+                            __trace__(connection->id() << ": listen => active");
                             move_connection(myActiveConnections,
                                             myListenConnections, connection);
                         }
@@ -1106,9 +1065,7 @@ namespace echo {
                             //       end up here, but the connection will still
                             //       be in the "listening connections" set.
 
-                            std::cerr
-                                << connection->id() << ": active => unused"
-                                << std::endl;
+                            __trace__(connection->id() << ": active => unused");
                             move_connection(myUnusedConnections,
                                             myActiveConnections, connection);
                         }
