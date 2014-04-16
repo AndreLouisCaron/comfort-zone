@@ -189,6 +189,10 @@ namespace echo {
         // Wait for all threads to complete.
         while (!waitset.empty())
         {
+            std::cerr
+                << "waiting for any thread to complete."
+                << std::endl;
+
             // Block until at least one thread completes.
             const w32::dword i = w32::Waitable::any(waitset);
 
@@ -199,18 +203,21 @@ namespace echo {
             }
 
             // Check for failure in the thread.
-            w32::mt::Thread thread = threads[i];
+            w32::mt::Thread thread(w32::mt::Thread::proxy(waitset[i]));
             const w32::dword status = thread.status();
-            if (status != 0) {
+            if (status != EXIT_SUCCESS) {
                 w32::mt::Mutex::Lock _(settings.console_lock());
                 std::cerr
                     << "  (exited abnormally, status=" << status << ")"
                     << std::endl;
             }
 
+            std::cerr
+                << "removing thread #" << i << "."
+                << std::endl;
+
             // Stop monitoring the thread.
             waitset.remove(i);
-            threads.erase(threads.begin()+i);
         }
 
         { w32::mt::Mutex::Lock _(settings.console_lock());
