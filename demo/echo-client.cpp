@@ -181,11 +181,11 @@ namespace echo {
     int client_main (int argc, wchar_t ** argv)
     {
         Settings settings;
-        w32::Waitable::Set waitset;
 
         // Launch threads that will pound on the server.
         std::vector<w32::mt::Thread> threads;
         threads.reserve(settings.threads());
+        w32::Waitable::Set waitset;
         for (int i = 0; (i < settings.threads()); ++i) {
             threads.push_back(w32::mt::Thread(
                 w32::mt::Thread::function<client_thread>(), &settings));
