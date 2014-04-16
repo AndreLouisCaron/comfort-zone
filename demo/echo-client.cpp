@@ -63,6 +63,10 @@ namespace echo {
         w32::mt::Mutex& console_lock () {
             return (myMutex);
         }
+
+        bool force_reset () const {
+            return (true);
+        }
     };
 
 
@@ -80,8 +84,6 @@ namespace echo {
         {
             // Connect to the server.
             w32::net::tcp::Stream stream(settings.peer());
-            stream.linger(5); // let system attempt to flush queued data after
-                              // socket is closed with a timeout of 5 seconds.
 
             // Put the entire payload.
             w32::dword used = 0;
@@ -95,9 +97,6 @@ namespace echo {
                     << std::endl;
                 error = true; continue;
             }
-
-            // Signal our intent not to send anything else.
-            stream.shutdown(w32::net::Socket::Shutdown::output());
 
             // Get the entire payload.
             w32::dword pass = 0; used = 0;
@@ -123,8 +122,17 @@ namespace echo {
                 error = true; continue;
             }
 
-            // Go for a clean exit (avoid `TIME_WAIT` state).
-            stream.disconnect();
+            // It's sometimes useful to force sending an RST packet (abortive
+            // close).  For example, when load testing an echo server on the
+            // loopback interface, client-side sockets stuck in the TIME_WAIT
+            // state will limit the load we can generate (the client program
+            // won't be able to connect to the server for several minutes).
+            if (settings.force_reset()) {
+                stream.linger(0);
+            }
+            else {
+                stream.shutdown(w32::net::Socket::Shutdown::output());
+            }
         }
 
         // If thread exits, any I/O operations (including pending writes whosse
