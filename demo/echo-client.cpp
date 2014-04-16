@@ -137,7 +137,7 @@ namespace echo {
             }
         }
 
-        // If thread exits, any I/O operations (including pending writes whosse
+        // If thread exits, any I/O operations (including pending writes who'se
         // payloads are lingering in the sockets' output buffer after the
         // sockets have been "closed") will be cancelled.  Prevent loss of data
         // by allowing all the I/O to complete.
