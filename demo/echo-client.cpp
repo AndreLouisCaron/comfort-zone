@@ -114,7 +114,7 @@ namespace echo {
             }
 
             // Make sure we got an exact copy.
-            if (std::memcmp(data, copy, size) != 0)
+            if (!error && (std::memcmp(data, copy, size) != 0))
             {
                 w32::mt::Mutex::Lock _(settings.console_lock());
                 std::cout
