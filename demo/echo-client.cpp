@@ -87,9 +87,11 @@ namespace echo {
 
             // Put the entire payload.
             w32::dword used = 0;
-            while (used < size) {
+            int pass = 0;
+            do {
                 used += stream.put(data+used, size-used);
             }
+            while ((pass > 0) && ((used+=pass) < size));
             if (used < size) {
                 w32::mt::Mutex::Lock _(settings.console_lock());
                 std::cout
@@ -99,7 +101,7 @@ namespace echo {
             }
 
             // Get the entire payload.
-            w32::dword pass = 0; used = 0;
+            pass = 0; used = 0;
             do {
                 pass = stream.get(copy+used, size-used);
             }
