@@ -113,36 +113,6 @@ namespace cz {
         myPeer = w32::net::ipv4::EndPoint();
     }
 
-    size_t SocketChannel::get (void * data, size_t size)
-    {
-        Hub::Slave& self = Hub::Slave::self();
-
-        // Start the I/O operation.
-        GetRequest request(myEngine, myStream);
-        request.start(data, size);
-
-        // Switch to master, it will resume us when it receives a completion
-        // notification for the asynchronous I/O operation.
-        self.hub().resume();
-
-        return (request.result());
-    }
-
-    size_t SocketChannel::put (const void * data, size_t size)
-    {
-        Hub::Slave& self = Hub::Slave::self();
-
-        // Start the I/O operation.
-        PutRequest request(myEngine, myStream);
-        request.start(data, size);
-
-        // Switch to master, it will resume us when it receives a completion
-        // notification for the asynchronous I/O operation.
-        self.hub().resume();
-
-        return (request.result());
-    }
-
     ConnectRequest::ConnectRequest (Engine& engine,
                           w32::net::ipv4::EndPoint host,
                           w32::net::ipv4::EndPoint peer)

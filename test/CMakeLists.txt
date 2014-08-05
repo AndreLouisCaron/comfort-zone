@@ -43,7 +43,22 @@ endmacro()
 
 
 set(tests
+  "test-anonymous-pipe-get"
+  "test-anonymous-pipe-put"
+  "test-computation"
+  "test-engine-wait-for-any"
   "test-hub-shutdown"
+  "test-mutex-acquire-asynchronous"
+  "test-mutex-acquire-synchronous"
+  "test-semaphore-decrement-asynchronous"
+  "test-semaphore-decrement-synchronous"
+  "test-socket-accept"
+  "test-socket-connect"
+  "test-socket-disconnect"
+  "test-socket-get"
+  "test-socket-put"
+  "test-thread-join-asynchronous"
+  "test-thread-join-synchronous"
 )
 foreach(test ${tests})
   add_test_program(${test})

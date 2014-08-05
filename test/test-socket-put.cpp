@@ -1,7 +1,4 @@
-#ifndef _cz_hpp__
-#define _cz_hpp__
-
-// Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
+// Copyright (c) 2014, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -26,45 +23,3 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-#include "Buffer.hpp"
-#include "Computation.hpp"
-#include "Engine.hpp"
-#include "FileReader.hpp"
-#include "FileWriter.hpp"
-#include "Hub.hpp"
-#include "Request.hpp"
-#include "Stream.hpp"
-#include "Listener.hpp"
-#include "SocketChannel.hpp"
-
-#include "trace.hpp"
-
-
-/*!
- * @defgroup core Core infrastructure
- * @brief Heart of the toolkit.
- *
- * This group contains components that form the basic infrastructure.
- */
-
-
-/*!
- * @defgroup resources I/O resources
- * @brief Resources that perform asynchronous I/O.
- *
- * This group provides basic functionality: simple asynchronous I/O.
- */
-
-
-/*!
- * @defgroup requests Asynchronous requests
- * @brief Tools for multi-request dispatch.
- *
- * This group provides a more advanced functionality for tasks to block on
- * multiple asynchronous requests simultaneously (a socket and a file, for
- * example).  Using this functionaliy can avoid spawning multiple independant
- * tasks for a single logical algorithm.
- */
-
-#endif /* _cz_hpp__ */

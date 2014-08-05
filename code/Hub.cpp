@@ -65,6 +65,8 @@ namespace cz {
 
     void Hub::spawn (Task& task, SpawnMode mode)
     {
+        cz_debug_when(myState != Running);
+
         Slave *const slave = new Slave(*this, task);
         task.start(slave);
         mySlaves.insert(slave);
@@ -94,7 +96,7 @@ namespace cz {
         if (myQueue.empty()) {
             return;
         }
-        std::pair<Slave*,Request*> queued_slave = myQueue.front();
+        std::pair<Slave*, Promise::Data*> queued_slave = myQueue.front();
         myQueue.pop_front();
         if (!exists(queued_slave.first)) {
             cz_trace("?hub(0x" << this << "): unknown slave(0x" << queued_slave.first << ").");
@@ -102,7 +104,7 @@ namespace cz {
         }
 
         // Have it run until it passes control back to us.
-        queued_slave.first->resume(queued_slave.second);
+        (queued_slave.first)->resume(queued_slave.second);
     }
 
     void Hub::resume_pending_slaves ()
@@ -122,19 +124,25 @@ namespace cz {
         }
     }
 
-    void Hub::schedule (Slave& slave, Request * request)
+    void Hub::schedule (Slave& slave, Promise::Data * promise)
     {
         cz_trace(">hub(0x" << this << "): scheduling slave(0x" << &slave << ")");
-        myQueue.push_back(std::make_pair(&slave, request));
+        myQueue.push_back(std::make_pair(&slave, promise));
     }
 
     void Hub::resume ()
     {
         // Reminder: this function is called by slaves!
+        Task& task = Task::current();
+        cz_debug_when((task.myState != Task::Running) &&
+                      (task.myState != Task::Closing));
+        cz_debug_when(myState != Hub::Paused);
 
         // Switch control back to hub so that it can resume us whenever the
         // asynchronous operation(s) we just launch complete(s).
+        myState = Hub::Running;
         myMaster.yield_to();
+        myState = Hub::Paused;  // NOTE: breaks hub shutdown?
 
         // Slave has just been resumed.
         cz_trace("@slave(0x" << &Slave::self() << ")");
@@ -144,7 +152,7 @@ namespace cz {
         // someone has tried to shut down the hub.
         if (myState != Running)
         {
-            if (myState == Closing) {
+            if (myState == Hub::Closing) {
                 cz_trace("hub is closing, aborting slave.");
                 throw (Shutdown());
             }
@@ -161,7 +169,7 @@ namespace cz {
         // to `Closing`, they will raise an exception that will propagate up
         // the call stack until they reach the fiber entry point, at which
         // point we can safely close the fiber.
-        myState = Closing;
+        myState = Hub::Closing;
 
         for (int i = 0; !mySlaves.empty(); ++i)
         {
@@ -227,7 +235,7 @@ namespace cz {
 
     void Task::start (Hub::Slave * slave)
     {
-        mySlave = slave, myState = Started;
+        mySlave = slave, myState = Task::Started;
     }
 
     bool Task::spawned () const
@@ -237,22 +245,22 @@ namespace cz {
 
     bool Task::running () const
     {
-        return (myState == Running);
+        return (myState == Task::Running);
     }
 
     bool Task::paused () const
     {
-        return (myState == Paused);
+        return (myState == Task::Paused);
     }
 
     bool Task::closing () const
     {
-        return (myState == Closing);
+        return (myState == Task::Closing);
     }
 
     bool Task::dead () const
     {
-        return (myState == Dead);
+        return (myState == Task::Dead);
     }
 
     void Task::pause ()
@@ -260,9 +268,18 @@ namespace cz {
         if (myState >= Dead) {
             // TODO: throw something.
         }
-        myState = Paused;
+        myState = Task::Paused;
         mySlave->pause();
-        myState = Running;
+        myState = Task::Running;
+    }
+
+    Task& Task::current ()
+    {
+        void *const context = w32::mt::Fiber::context();
+        if (context == 0) {
+            // TODO: throw something!
+        }
+        return (static_cast<Hub::Slave*>(context)->task());
     }
 
 // Note: 'this' in constructor initializer list is safe here: fiber must be
@@ -276,7 +293,7 @@ namespace cz {
         : myHub(hub)
         , myTask(task)
         , myFiber(w32::mt::Fiber::function<&Slave::entry>(), this)
-        , myLastRequest(0)
+        , myLastPromise(0)
     {
         cz_trace("+slave(0x" << this << ")");
     }
@@ -320,6 +337,7 @@ namespace cz {
         cz_trace("@slave(0x" << &self << ")");
 
         // Enter application code.
+        self.myHub.myState = Hub::Paused;
         try
         {
             const Task::Online _(self.myTask, self);
@@ -352,16 +370,19 @@ namespace cz {
         }
     }
 
-    void Hub::Slave::resume (Request * request)
+    void Hub::Slave::resume (Promise::Data * promise)
     {
         // Note: this function is always called by the hub!
         if (!myHub.running()) {
             throw (std::exception("Only the hub can resume slaves!"));
         }
 
-        myLastRequest = request;
+        myLastPromise = promise;
+
+        myTask.myState = Task::Running;  // NOTE: breaks task shutdown?
         myFiber.yield_to();
-        myLastRequest = 0;
+
+        myLastPromise = 0;
 
         // Hub has just been resumed.
         cz_trace("@hub(0x" << &myHub << ")");
@@ -376,6 +397,9 @@ namespace cz {
             myTask.mySlave = 0;
 
             myHub.mySlaves.erase(this); delete this;
+        }
+        else {
+            myTask.myState = Task::Paused;  // NOTE: breaks task shutdown!
         }
     }
 
@@ -397,9 +421,9 @@ namespace cz {
         cz_trace("@slave(0x" << myFiber.handle() << ")");
     }
 
-    Request * Hub::Slave::last_request () const
+    Promise::Data * Hub::Slave::last_promise () const
     {
-        return (myLastRequest);
+        return (myLastPromise);
     }
 
 }

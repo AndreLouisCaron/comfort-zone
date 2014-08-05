@@ -27,6 +27,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "Promise.hpp"
+
 #include <w32.hpp>
 #include <w32.mt.hpp>
 
@@ -39,7 +41,8 @@ namespace cz {
 
     class Hub;
     class Task;
-    class Request;
+    class Engine;
+    class Promise;
 
     /*!
      * @ingroup core
@@ -48,7 +51,6 @@ namespace cz {
     class Hub
     {
     friend class Task;
-    friend class Request;
 
         /* nested types. */
     public:
@@ -62,7 +64,7 @@ namespace cz {
             virtual const char * what () const throw();
         };
 
-        typedef std::deque< std::pair<Slave*,Request*> > SlaveQueue;
+        typedef std::deque< std::pair<Slave*,Promise::Data*> > SlaveQueue;
 
     public:
         /*!
@@ -81,6 +83,7 @@ namespace cz {
          */
         enum State {
             Running,
+            Paused,
             Closing,
         };
 
@@ -131,7 +134,7 @@ namespace cz {
 
         // Schedule slave for execution.
         // TODO: make this parameter a `Task`?
-        void schedule (Slave& slave, Request * request=0);
+        void schedule (Slave& slave, Promise::Data * promise=0);
 
         /*!
          * @internal
@@ -165,6 +168,7 @@ namespace cz {
     class Task
     {
     friend class Hub;
+    friend class Engine;  // TODO: remove this (merge engine & hub)!
 
         /* nested types. */
     private:
@@ -206,6 +210,8 @@ namespace cz {
         // Temporarily yield to hub, get resumed after dispatching events.
         void pause ();
 
+        static Task& current ();
+
     protected:
         // Actual code to run.
         virtual void run () = 0;
@@ -237,6 +243,7 @@ namespace cz {
     class Hub::Slave
     {
     friend class Hub;
+    friend class Engine;  // TODO: merge hub & engine.
 
         /* class methods. */
     public:
@@ -256,7 +263,9 @@ namespace cz {
 
         w32::mt::Fiber myFiber;
 
-        Request * myLastRequest;
+        // Set when the hub is resumed after a completion notification that
+        // fulfills a promise is received.
+        Promise::Data * myLastPromise;
 
         /* construction. */
     public:
@@ -280,12 +289,12 @@ namespace cz {
         /*!
          * @internal
          * @brief Yield control to this slave.
-         * @param request Pointer to the request that caused the slave to be
-         *  resumed.
+         * @param promise Pointer to the promise whose fulfillment caused the
+         *  slave to be resumed.
          *
          * @attention This function should only be called by the Hub.
          */
-        void resume (Request * request=0);
+        void resume (Promise::Data * promise=0);
 
         /*!
          * @brief Queue task in hub, keep control.
@@ -298,7 +307,7 @@ namespace cz {
          */
         void resume_later ();
 
-        Request * last_request () const;
+        Promise::Data * last_promise () const;
 
     private:
         static void entry (w32::mt::Fiber::Context context);

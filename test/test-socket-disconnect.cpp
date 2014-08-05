@@ -1,4 +1,4 @@
-// Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
+// Copyright (c) 2014, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -23,51 +23,3 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-#include "BlockingWriter.hpp"
-#include "Engine.hpp"
-
-#include "trace.hpp"
-
-namespace cz {
-
-    BlockingWriter::BlockingWriter (Engine& engine,
-                                    w32::io::OutputStream& stream)
-        : myEngine(engine)
-        , myBackend(stream)
-    {
-    }
-
-    size_t BlockingWriter::put (const void * data, size_t size)
-    {
-        BlockingPutRequest computation(myBackend, data, size);
-        myEngine.compute(computation);
-        return (computation.result());
-    }
-
-
-    BlockingPutRequest::BlockingPutRequest (w32::io::OutputStream& stream,
-                                            const void * data, size_t size)
-        : myStream(stream)
-        , myData(data)
-        , mySize(size)
-        , myUsed(0)
-    {
-    }
-
-    size_t BlockingPutRequest::result () const
-    {
-        return (myUsed);
-    }
-
-    void BlockingPutRequest::execute ()
-    {
-        // Consume everything while we're in the background thread!
-        const char *const data = static_cast<const char*>(myData);
-        while (myUsed < mySize) {
-            cz_trace(" >> writing " << (mySize-myUsed) << " bytes to blocking stream.");
-            myUsed += myStream.put(data+myUsed, mySize-myUsed);
-        }
-    }
-
-}

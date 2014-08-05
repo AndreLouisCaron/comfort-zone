@@ -26,31 +26,27 @@
 
 set(cz_headers
   Buffer.hpp
-  BlockingReader.hpp
-  BlockingWriter.hpp
   Computation.hpp
   Engine.hpp
   FileReader.hpp
   FileWriter.hpp
   Hub.hpp
   Listener.hpp
-  Request.hpp
   SocketChannel.hpp
   Stream.hpp
+  Promise.hpp
 )
 set(cz_sources
   Buffer.cpp
-  BlockingReader.cpp
-  BlockingWriter.cpp
   Computation.cpp
   Engine.cpp
   FileReader.cpp
   FileWriter.cpp
   Hub.cpp
   Listener.cpp
-  Request.cpp
   SocketChannel.cpp
   Stream.cpp
+  Promise.cpp
 )
 set(cz_libraries
   w32

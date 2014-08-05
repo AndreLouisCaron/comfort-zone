@@ -1,7 +1,7 @@
 #ifndef _cz_Engine_hpp__
 #define _cz_Engine_hpp__
 
-// Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
+// Copyright (c) 2014, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -37,13 +37,12 @@
 
 #include "Hub.hpp"
 #include "Request.hpp"
+#include "Promise.hpp"
 
 #include <list>
 
 namespace cz {
 
-    class BlockingReader;
-    class BlockingWriter;
     class Channel;
     class Computation;
     class Engine;
@@ -52,10 +51,8 @@ namespace cz {
     class Request;
     class SocketChannel;
     class Writer;
-
-    // Async operations.
-    class WaitRequest;
-    class WorkRequest;
+    class Promise;
+    class Buffer;
 
     /*!
      * @ingroup core
@@ -100,8 +97,6 @@ namespace cz {
 
     // Async requests need access to the thread pool.
     friend class TimeRequest;
-    friend class WaitRequest;
-    friend class WorkRequest;
 
         /* data. */
     private:
@@ -121,24 +116,6 @@ namespace cz {
         ~Engine ();
 
         /* methods. */
-    private:
-        /*!
-         * @internal
-         * @brief Have the hub unblock the task that initiated the request.
-         * @param request The request to mark as completed.
-         * @param data Pointer to any data concerned by the request, usually
-         *  the address of a memory block concerned by an I/O request.
-         * @param size Size of @a data, in bytes.
-         *
-         * This posts a notification to the I/O completion port so that the hub
-         * has only a single place to check for completion of all types of
-         * requests.  Use this at the end of an asynchronous request to unblock
-         * the task that initiated @a request.
-         */
-        void complete_request (Request& request,
-                               void * data=0,
-                               w32::dword size=0);
-
     public:
         Hub& hub ();
 
@@ -146,6 +123,10 @@ namespace cz {
          * @internal
          */
         w32::io::CompletionPort& completion_port ();
+
+        // TODO: figure out a way to make all structures derived from
+        //       Promise::Data friends so that they can access this.
+        w32::tp::Queue& thread_pool_queue ();
 
         /*!
          * @brief Process an asynchronous operation completion notification.
@@ -193,23 +174,383 @@ namespace cz {
          */
         void process_notifications ();
 
-        // Hub-friendly synchronous I/O.
-        BlockingReader * standard_input ();
-        BlockingWriter * standard_output ();
-        BlockingWriter * standard_error ();
-        // TODO: add anonymous pipes.
+        /*!
+         * @brief Read from blocking input stream.
+         *
+         * This method turns a synchronous read operation into an asynchronous
+         * promise to obtain data by performing the blocking read operation on
+         * a background thread (in the engine's thread pool).  This is mainly
+         * intended to make reading from the standard input and anonymous pipes
+         * possible in a task.
+         *
+         * When it's possible to obtain an input stream that supports
+         * asynchronous I/O and reads from the same data source, you should
+         * attempt that instead as it will use fewer system resources (there is
+         * no need to use one thread per stream in that case).
+         *
+         * @attention A successful read that returns 0 bytes indicates that the
+         *  "end of file" condition has been reached and that there is no more
+         *  data to read from @a stream.
+         *
+         * @note You should never pass a stream that has been configured for
+         *  non-blocking synchronous I/O because it brings no benefit and may
+         *  yield strange results (such as a 0-byte read regardless of the "end
+         *  of file" condition).
+         *
+         * @param[in,out] stream Input stream to read from.
+         * @param[out] data Buffer into which data read from @a stream will be
+         *  copied.  This buffer will receive up to @a size bytes.
+         * @param[in] size Maximum amount of data (in bytes) to read into
+         *  @a data from @a stream.
+         * @return A promise to read up to @a size bytes from @ stream into
+         *  @a data.  This promise will be fulfilled when @a stream has
+         *  available data.
+         */
+        Promise get (w32::io::InputStream stream, void * data, size_t size);
 
-        // Hub-friendly asynchronous disk I/O.
-        Reader * file_reader (const w32::string& path);
-        Writer * file_writer (const w32::string& path);
+        /*!
+         * @brief Write to a blocking output stream.
+         *
+         * This method turns a synchronous write operation into an asynchronous
+         * promise to write data by performing the blocking write operation on
+         * a background thread (in the engine's thread pool).  This is mainly
+         * intended to make writing to the standard output, the standard error
+         * and anonymous pipes possible in a task.
+         *
+         * When it's possible to obtain an output stream that supports
+         * asynchronous I/O and writes to the same data source, you should
+         * attempt that instead as it will use fewer system resources (there is
+         * no need to use one thread per stream in that case).
+         *
+         * @attention A successful write that returns 0 bytes indicates that
+         *  the "end of file" condition has been reached and that the
+         *  application cannot write more data to @a stream.
+         *
+         * @note You should never pass a stream that has been configured for
+         *  non-blocking synchronous I/O because it brings no benefit and may
+         *  yield strange results (such as a 0-byte write regardless of the
+         *  "end of file" condition).
+         *
+         * @param[in,out] stream Output stream to write to.
+         * @param[out] data Buffer from which data should be taken when writing
+         *  to @a stream.  Up to @a size bytes will be copied into this buffer.
+         * @param[in] size Maximum amount of data (in bytes) to read from
+         *  @a data and written to @a stream.
+         * @return A promise to write up to @a size bytes from @a data into
+         *  @a stream into.  This promise will be fulfilled when at least 1
+         *  byte is written into @a stream or @a stream has reached its "end of
+         *  file" state.
+         */
+        Promise put (w32::io::OutputStream stream,
+                     const void * data, size_t size);
 
-        // Hub-friendly asynchronous network I/O.
-        Listener * listen (w32::net::ipv4::EndPoint host);
-        SocketChannel * connect (w32::net::ipv4::EndPoint peer);
-        SocketChannel * connect (w32::net::ipv4::Address host,
-                                 w32::net::ipv4::EndPoint peer);
-        SocketChannel * connect (w32::net::ipv4::EndPoint host,
-                                 w32::net::ipv4::EndPoint peer);
+        /*!
+         * @brief Read from a file stream opened for asynchronous I/O.
+         *
+         * @pre @a stream has been opened for asynchronous I/O.
+         *
+         * @param[in,out] stream Input stream to read from.
+         * @param[out] data Buffer into which data read from @a stream will be
+         *  copied.  This buffer will receive up to @a size bytes.
+         * @param[in] size Maximum amount of data (in bytes) to read into
+         *  @a data from @a stream.
+         * @return A promise to read up to @a size bytes from @ stream into
+         *  @a data.  This promise will be fulfilled when @a stream has
+         *  available data.
+         */
+        Promise get (w32::io::InputFile stream, void * data, size_t size);
+
+        /*!
+         * @brief Write to a file stream opened for asynchronous I/O.
+         *
+         * @pre @a stream has been opened for asynchronous I/O.
+         *
+         * @param[in,out] stream Output stream to write to.
+         * @param[out] data Buffer from which data should be taken when writing
+         *  to @a stream.  Up to @a size bytes will be copied into this buffer.
+         * @param[in] size Maximum amount of data (in bytes) to read from
+         *  @a data and written to @a stream.
+         * @return A promise to write up to @a size bytes from @a data into
+         *  @a stream into.  This promise will be fulfilled when at least 1
+         *  byte is written into @a stream or @a stream has reached its "end of
+         *  file" state.
+         */
+        Promise put (w32::io::OutputFile stream,
+                     const void * data, size_t size);
+
+        Promise connect (w32::net::tcp::Stream stream,
+                         w32::net::ipv4::EndPoint peer);
+        Promise connect (w32::net::tcp::Stream stream,
+                         w32::net::ipv4::EndPoint peer,
+                         w32::net::ipv4::Address host);
+        Promise connect (w32::net::tcp::Stream stream,
+                         w32::net::ipv4::EndPoint peer,
+                         w32::net::ipv4::EndPoint host);
+
+        /*!
+         * @brief Connect to a TCP server.
+         *
+         * @param[in,out] buffer Data to send to the server as soon as the
+         *  connection is established.
+         *
+         * @see get(w32::net::StreamSocket,void*,size_t)
+         * @see put(w32::net::StreamSocket,const void*,size_t)
+         * @see disconnect
+         */
+        Promise connect (w32::net::tcp::Stream stream,
+                         w32::net::ipv4::EndPoint peer,
+                         w32::net::ipv4::EndPoint host, Buffer& buffer);
+
+        Promise accept (w32::net::tcp::Listener listener,
+                        w32::net::tcp::Stream stream);
+
+        /*!
+         * @brief Connect to a TCP server.
+         *
+         * @attention When using a buffer to receive an initial payload, the
+         *  promise will not be fulfilled until the client sends at least 1
+         *  byte of data.  This exposes the client to an easy denial of service
+         *  attack that is quite subtle to handle correctly: it requires using
+         *  multiple parallel accept requests and polling them to detect
+         *  inactive connections.
+         *
+         * @param[in,out] listener TCP "server" socket that is listening for
+         *  incoming connections.
+         * @param[in,out] stream TCP "client" socket that will be connected
+         *  when this promise fulfills.
+         * @param[in,out] buffer Buffer that will receive data sent by the
+         *  client when connection is established.
+         *
+         * @see connect
+         * @see get(w32::net::StreamSocket,void*,size_t)
+         * @see put(w32::net::StreamSocket,const void*,size_t)
+         * @see disconnect
+         */
+        Promise accept (w32::net::tcp::Listener listener,
+                        w32::net::tcp::Stream stream, Buffer& buffer);
+
+        /*!
+         * @brief Read data from a TCP socket.
+         *
+         * @param[in,out] stream Input stream to read from.
+         * @param[out] data Buffer into which data read from @a stream will be
+         *  copied.  This buffer will receive up to @a size bytes.
+         * @param[in] size Maximum amount of data (in bytes) to read into
+         *  @a data from @a stream.
+         * @return A promise to read up to @a size bytes from @ stream into
+         *  @a data.  This promise will be fulfilled when @a stream has
+         *  available data.
+         *
+         * @see accept
+         * @see connect
+         * @see put(w32::net::StreamSocket,const void*,size_t)
+         * @see disconnect
+         */
+        Promise get (w32::net::StreamSocket stream, void * data, size_t size);
+
+        /*!
+         * @brief Write data to a TCP socket.
+         *
+         * @param[in,out] stream Output stream to write to.
+         * @param[out] data Buffer from which data should be taken when writing
+         *  to @a stream.  Up to @a size bytes will be copied into this buffer.
+         * @param[in] size Maximum amount of data (in bytes) to read from
+         *  @a data and written to @a stream.
+         * @return A promise to write up to @a size bytes from @a data into
+         *  @a stream into.  This promise will be fulfilled when at least 1
+         *  byte is written into @a stream or @a stream has reached its "end of
+         *  file" state.
+         *
+         * @see accept
+         * @see connect
+         * @see get(w32::net::StreamSocket,void*,size_t)
+         * @see disconnect
+         */
+        Promise put (w32::net::StreamSocket stream,
+                     const void * data, size_t size);
+
+        /*!
+         * @brief Disconnect a socket and prepare it for reuse.
+         *
+         * Once the promise is fulfilled, the socket may be reused in @c accept
+         * or @c connect calls to process a new connection.
+         *
+         * @attention When the peer performs an unclean shutdown sequence (e.g.
+         *  because of a crash), the socket is subject to the @c TIME_WAIT
+         *  state.  Because it is not safe to reuse the socket while it is in
+         *  this state, the promise will not be fulfilled until this state
+         *  changes.  In a default system configuration, this may take up to 4
+         *  minutes.  While this may seem excessive, it prevents accidentally
+         *  catching data from the wrong connection and corrupting the data
+         *  stream (see RFC 793).
+         *
+         * @pre @a stream is connected.
+         * @pre Linger has been configured on @a stream (the system default of
+         *  indefinite timeout applies unless explicitly overriden).
+         *
+         * @param[in,out] stream Socket that should be disconnected.
+         * @return A promise to disconnect @a stream.  The promise will be
+         *  fulfilled when all data has been flushed (subject to linger) and
+         *  the shutdown sequence has completed.
+         *
+         * @see accept
+         * @see connect
+         */
+        Promise disconnect (w32::net::StreamSocket stream);
+
+        /*!
+         * @brief Acquire the mutual-exclusion lock.
+         *
+         * This method returns a promise to acquire @a mutex.  The
+         * returned promise will be fulfilled when another thread releases
+         * @a mutex.
+         *
+         * @param[in,out] mutex The mutual-exclusion lock to acquire.
+         * @return A promise to acquire @a mutex.  This promise may be
+         *  fulfilled synchronously, so check the promise state when it is
+         *  returned.
+         */
+        Promise acquire (w32::mt::Mutex mutex);
+
+        /*!
+         * @brief Decrement @a semaphore by 1.
+         *
+         * This method returns a promise to decrement @a semaphore.  The
+         * returned promise will be fulfilled when another thread increments
+         * @a semaphore.
+         *
+         * @param[in,out] semaphore The semaphore that you wish to decrement.
+         * @return A promise to decrement @a semaphore.  This promise may
+         *  fulfill synchronously, so check the promise state when it is
+         *  returned.
+         */
+        Promise acquire (w32::mt::Semaphore semaphore);
+
+        /*!
+         * @brief Wait for @a thread to complete its execution.
+         *
+         * This method returns a promise to observe the completion of @a
+         * thread.  The returned promise will be fulfilled when the thread's
+         * execution completes.  This may happen in several circumstances:
+         * 1) the thread's entry point returns to the system;
+         * 2) the thread calls @c ExitThread(); or
+         * 3) another thread kills the thead using @c TerminateThread().
+         *
+         * @param[in] thread The thread whose completion you are interested in.
+         * @return A promise to notify you when the thread completes its
+         *  execution.  This promise may fulfill synchronously, so check the
+         *  promise state when it is returned.
+         */
+        Promise join (w32::mt::Thread thread);
+
+        /*!
+         * @brief Wait for @a process to complete its execution.
+         *
+         * This method returns a promise to observe the completion of @a
+         * process.  The returned promise will be fulfilled when the process'
+         * execution completes.  This may happen in several circumstances:
+         * 1) the process' entry point returns to the system;
+         * 2) the process calls @c ExitProcess(); or
+         * 3) another process kills the process using @c TerminateProcess().
+         *
+         * @param[in] process The process whose completion you are interested
+         *  in.
+         * @return A promise to notify you when the process completes its
+         *  execution.  This promise may fulfill synchronously, so check the
+         *  promise state when it is returned.
+         */
+        Promise join (w32::ipc::Process process);
+
+        /*!
+         * @brief Wait for all processes in @a job to complete their execution.
+         *
+         * This method returns a promise to observe the completion of all
+         * processes in @a job.  The returned promise will be fulfilled when
+         * all the processes' execution complete.  Each process may complete in
+         * several circumstances:
+         * 1) the process' entry point returns to the system;
+         * 2) the process calls @c ExitProcess(); or
+         * 3) another process kills the process using @c TerminateProcess().
+         *
+         * The promise will also complete if the job is terminated by killing
+         * all processes with a single call to @c TerminateJobObject().
+         *
+         * @param[in] job The job whose completion you are interested in.
+         * @return A promise to notify you when the process completes its
+         *  execution.  This promise may fulfill synchronously, so check the
+         *  promise state when it is returned.
+         */
+        Promise join (w32::ipc::Job job);
+
+        /*!
+         * @brief Wait for @a timer to elapse.
+         *
+         * This method returns a promise to observe @a timer elapsing.  The
+         * return promise will be fulfilled when enough time passes.
+         *
+         * @param[in] timer The thread you are interested in watching.
+         * @return A promise to notify you when the timer elapses.  This
+         *  promise may be fulfilled synchronously, so check the promise state
+         *  when it is returned.
+         */
+        Promise await (w32::mt::Timer timer);
+
+        /*!
+         * @brief Wait for @a event to get signaled.
+         *
+         * This method returns a promise to observe @a event getting signaled.
+         * The return promise will be fulfilled when another thread signals
+         * @a event.
+         *
+         * @param[in] event The thread you are interested in watching.
+         * @return A promise to notify you when the event is signaled.  This
+         *  promise may be fulfilled synchronously, so check the promise state
+         *  when it is returned.
+         *
+         * @attention While manual reset events seems simple, the are rather
+         *  frequently used incorrectly because there is no control and there
+         *  are no guarantees over which waiting thread(s) will be resumed when
+         *  signaling the event.  The only recommended usage is as marker that
+         *  some @e permanent state transition has occured (e.g. server
+         *  shutdown request has been received).
+         */
+        Promise await (w32::mt::ManualResetEvent event);
+
+        /*!
+         * @brief Wait for @a event to get signaled.
+         *
+         * This method returns a promise to observe @a event getting signaled.
+         * The return promise will be fulfilled when another thread signals
+         * @a event.
+         *
+         * @param[in] event The thread you are interested in watching.
+         * @return A promise to notify you when the event is signaled.  This
+         *  promise may be fulfilled synchronously, so check the promise state
+         *  when it is returned.
+         *
+         * @attention In contrast with a manual-reset event, an auto-reset
+         *  event's state is cleared as soon as a single wait is satisfied.
+         *  However, they are still somewhat clumsy to use since the signaler
+         *  has no way to determine whether another thread has "consumed" the
+         *  signal and if it is safe to signal the event again.
+         */
+        Promise await (w32::mt::AutoResetEvent event);
+
+        /*!
+         * @brief Wait until a file-system change is detected by @a changes.
+         *
+         * This method returns a promise to observe file-system changes.  The
+         * returned promise will be fulfilled when any process performs
+         * file-system changes that can be detected by the registered filter.
+         *
+         * @attention The caller is responsible for calling @c changes.next()
+         *  between asynchronous wait operations.
+         *
+         * @param[in] changes The file-system change watcher.
+         * @return A promise to notify you when the changes are detected.  This
+         *  promise @e cannot be fulfilled synchronously.
+         */
+        Promise await (w32::fs::Changes changes);
 
         /*!
          * @brief Have @a computation execute in a background thread.
@@ -222,23 +563,64 @@ namespace cz {
          * than in the thread where all the hub's fibers are running.
          *
          * @note This cannot be called by the hub's main fiber.
+         *
+         * @param[in,out] computation Work to be done in the background thread.
+         *  The @a computation object is shared state.  It should not be
+         *  accessed until the promise is fulfilled.
+         * @return A promise to execute @c computation.run() in a background
+         *  thread.  The promise can @e never be fulfilled synchronously.
          */
-        void compute (Computation& computation);
+        Promise execute (Computation& computation);
 
-        // Hub-friendly wait functions.
-        void join (w32::ipc::Process process);
-        void join (w32::ipc::Job job);
-        void join (w32::mt::Thread thread);
-        void acquire (w32::mt::Mutex mutex);
-        void acquire (w32::mt::Semaphore semaphore);
-        void await (w32::mt::Timer timer);
-        void await (w32::mt::ManualResetEvent event);
-        void await (w32::mt::AutoResetEvent event);
-        void await (w32::fs::Changes changes);
+        /*!
+         * @brief Block the current task until @a promise is fulfilled.
+         *
+         * @param[in] promise Promise that must be fulfilled in order for the
+         *  current task to continue its execution.
+         *
+         * @post @a promise is either fulfilled or broken.
+         *
+         * @see wait_for_any
+         * @see wait_for_all
+         */
+        void wait_for (Promise& promise);
+
+        /*!
+         * @brief Block the current task until one of @a promises is fulfilled.
+         *
+         * In a scatter-gather parallel computing model, this is a "gather"
+         * operation that allows you to process individual results as they
+         * become available (and possibly issue additional parallel operations
+         * in response).
+         *
+         * @param[in,out] promises A set of promises from which one must be
+         *  fulfilled in order for the current task to continue its execution.
+         *
+         * @post @c promises.next() will yield a promise that is either
+         *  fulfilled or broken.
+         *
+         * @see wait_for
+         * @see wait_for_all
+         */
+        void wait_for_any (Promise::Set& promises);
+
+        /*!
+         * @brief Block the current task until all of @a promises are fulfilled.
+         *
+         * In a scatter-gather parallel computing model, this is the "gather"
+         * operation that collects results for all parallel operations.
+         *
+         * @param[in,out] promises A set of promises which must all be
+         *  fulfilled in order for the current task to continue its execution.
+         *
+         * @post All promises in @a promises are either fulfilled or broken.
+         *
+         * @see wait_for
+         * @see wait_for_any
+         */
+        void wait_for_all (Promise::Set& promises);
 
     private:
-        void wait (w32::Waitable waitable);
-
         /*!
          * @internal
          * @brief Common code to process a notification.
@@ -247,40 +629,6 @@ namespace cz {
          * @see process_notification()
          */
         void process (w32::io::Notification notification);
-    };
-
-
-    /*!
-     * @ingroup requests
-     * @brief %Request to wait for waitable kernel objects.
-     */
-    class WaitRequest
-    {
-        /* data. */
-    private:
-        Request myRequest;
-        w32::Waitable myWaitable;
-        w32::tp::Wait myJob;
-
-        /* construction. */
-    public:
-        WaitRequest (Engine& engine, w32::Waitable waitable);
-
-        /* methods. */
-    public:
-        void start ();
-
-        bool is (const Request * request) const;
-
-        /*!
-         * @internal
-         * @brief Called from thread pool to unblock the hub.
-         * @post @c ready() returns @c true.
-         */
-        void close ();
-
-        bool ready () const;
-        void reset (); // call before calling `start()` again.
     };
 
 
@@ -338,37 +686,6 @@ namespace cz {
          */
         void close ();
 
-        bool ready () const;
-        void reset (); // call before calling `start()` again.
-    };
-
-
-    /*!
-     * @ingroup requests
-     * @brief %Request to execute CPU-intensive work in the background.
-     */
-    class WorkRequest
-    {
-        /* data. */
-    private:
-        Request myRequest;
-        Computation& myComputation;
-        w32::tp::Work myJob;
-
-    public:
-        WorkRequest (Engine& engine, Computation& computation);
-
-        /* methods. */
-    public:
-        void start ();
-
-        /*!
-         * @internal
-         * @brief Called from thread pool to unblock the hub.
-         * @post @c ready() returns @c true.
-         */
-        void close ();
- 
         bool ready () const;
         void reset (); // call before calling `start()` again.
     };
