@@ -20,8 +20,8 @@ It take its name from the following definition of "comfort zone":
    anxiety-neutral condition, using a limited set of behaviours to deliver a
    steady level of performance, usually without a sense of risk.
 
-So basically it aims at providing an I/O toolkit for C++ with the following
-qualities:
+So basically it aims at providing an C++ I/O toolkit for Windows with the
+following qualities:
 
 - **simple**: understands that mixing callbacks, mutable state and manual
   memory management is not for the faint of heart (even highly experienced
@@ -43,7 +43,7 @@ Status
 ======
 
 The library currently serves as a proof of concept, is in active development
-and should be considered to tbe *higlhly experimental*.
+and should be considered *highly experimental*.
 
 
 Features
@@ -52,13 +52,47 @@ Features
 Key features include:
 
 - uniform API for dealing with:
-
-  * asynchronous network I/O;
-  * asynchronous file I/O;
-  * synchronous pipe & standard input/output/error I/O;
-  * jobs, processes, threads,  mutexes, semaphores;
-
+  * TCP sockets;
+  * files;
+  * anonymous pipes;
+  * standard input, output and error streams;
+  * mutexes, semaphores, timers, threads, processes and jobs;
+  * filesystem changes; and
+  * CPU-bound tasks.
+- efficient multiplexed waits for awaiting completion of large numbers of
+  asynchronous operations;
 - coroutine-based parallel processing for effortless lock-free programming.
+
+The promise-based API makes it easy to implement scatter-gather type parallel
+programming: start N tasks in parallel and wait until any or all of them to
+complete!  This is especially useful for dealing with timeouts on asynchronous
+operations: in contast to callback-based APIs, promises really shine here.
+
+
+Design
+======
+
+The `cz::Engine` uses an I/O completion port as a synchronization primitive:
+this kernel-level queue for notifications makes a nice multiple-producer,
+single-consumer queue to which *all* asynchronous operations report their
+completion.
+
+The `cz::Promise` is just a bookeeping tool for tracking the status of an
+asynchronous operation.  When the operation completes, a completion
+notification is posted to the I/O completion port.  Then, application can have
+the `cz::Engine` process notifiations and update the state of the
+`cz::Promise`.
+
+The `cz::Promise::Set` is an intrusive container for `cz::Promise` objects.
+The following operations on the set are O(1):
+- watching a promise;
+- ignoring a promise;
+- querying how many promises have been settled; and
+- removing one settled promise.
+To implement these O(1) operations, the set uses a couple of tricks.  In
+particular, it relies on promises knowing their own position inside this
+container (that's why you can't use a naive `std::vector<cz::Promise>` for
+implementing multiplexed waits).
 
 
 Compiling
@@ -100,11 +134,18 @@ Compiling
       rem: build all targets.
       nmake
 
+#. Compile the documentation.
+
+   ::
+
+      rem: build the optional documentation target.
+      nmake help
+
 #. Run the tests.
 
    ::
 
-      rem: build all targets.
+      rem: run all tests.
       nmake /A test
 
 .. _`Microsoft Visual Studio`: http://www.microsoft.com/visualstudio/en-us
@@ -120,7 +161,7 @@ applications so long as you respect the terms of this 2-clause BSD license:
 
 ::
 
-   Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
+   Copyright (c) 2014, Andre Caron (andre.l.caron@gmail.com)
    All rights reserved.
 
    Redistribution and use in source and binary forms, with or without

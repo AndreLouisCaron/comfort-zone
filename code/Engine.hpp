@@ -36,7 +36,6 @@
 #include <w32.tp.hpp>
 
 #include "Hub.hpp"
-#include "Request.hpp"
 #include "Promise.hpp"
 
 #include <list>
@@ -48,10 +47,8 @@ namespace cz {
     class Engine;
     class Listener;
     class Reader;
-    class Request;
     class SocketChannel;
     class Writer;
-    class Promise;
     class Buffer;
 
     /*!
@@ -93,10 +90,7 @@ namespace cz {
     class Engine
     {
     // Async requests need to post to the completion port.
-    friend class Request;
-
-    // Async requests need access to the thread pool.
-    friend class TimeRequest;
+    friend class Promise;
 
         /* data. */
     private:
@@ -111,22 +105,90 @@ namespace cz {
 
         /* construction. */
     public:
+        /*!
+         * @brief Create an engine that will perform I/O for tasks in @a hub.
+         *
+         * @param[in,out] hub Hub that runs tasks that will issue I/O requests
+         * to the engine.
+         */
         Engine (Hub& hub);
 
+        /*!
+         * @brief Cleanup acquired resources.
+         *
+         * This process will shut down the internal thread pool and close the
+         * I/O completion port that receives completion notifications signaling
+         * the settlement of promises issued by the engine.
+         *
+         * @pre All promises issued by @c *this have been settled.
+         */
         ~Engine ();
 
         /* methods. */
     public:
+        /*!
+         * @internal
+         * @brief Hub that runs tasks to which promises are issued by @c *this.
+         *
+         * @return The reference to the hub that runs tasks to which promises
+         *  are issued by @c *this.
+         */
         Hub& hub ();
 
         /*!
-         * @internal
+         * @brief Bind @a listener to the engine's I/O completion port.
+         *
+         * Binding @a listener is required in order to receive completion
+         * notifications that signal the settlement of promises issued by the
+         * engine.
+         *
+         * @pre @a listener has been opened for overlapped I/O.
+         *
+         * @param[in,out] listener TCP listener that should be bound to
+         *  @c *this.
+         *
+         * @see accept
          */
-        w32::io::CompletionPort& completion_port ();
+        void bind (w32::net::tcp::Listener& listener);
 
-        // TODO: figure out a way to make all structures derived from
-        //       Promise::Data friends so that they can access this.
-        w32::tp::Queue& thread_pool_queue ();
+        /*!
+         * @brief Bind @a listener to the engine's I/O completion port.
+         *
+         * Binding @a stream is required in order to receive completion
+         * notifications that signal the settlement of promises issued by the
+         * engine.
+         *
+         * @pre @a stream has been opened for overlapped I/O.
+         *
+         * @param[in,out] stream TCP socket that should be bound to @c *this.
+         */
+        void bind (w32::net::tcp::Stream& stream);
+
+        /*!
+         * @brief Bind @a stream to the engine's I/O completion port.
+         *
+         * Binding @a stream is required in order to receive completion
+         * notifications that signal the settlement of promises issued by the
+         * engine.
+         *
+         * @pre @a stream has been opened for overlapped I/O.
+         *
+         * @param[in,out] stream File that should be bound to @ *this.
+         */
+        void bind (w32::io::InputFile& stream);
+
+        /*!
+         * @brief Bind @a stream to the engine's I/O completion port.
+         *
+         * Binding @a stream is required in order to receive completion
+         * notifications that signal the settlement of promises issued by the
+         * engine.
+         *
+         * @pre @a stream has been opened for overlapped I/O.
+         *
+         * @param[in,out] stream File that should be bound to @ *this.
+         */
+        void bind (w32::io::OutputFile& stream);
 
         /*!
          * @brief Process an asynchronous operation completion notification.
@@ -278,11 +340,69 @@ namespace cz {
         Promise put (w32::io::OutputFile stream,
                      const void * data, size_t size);
 
+        /*!
+         * @brief Connect to a TCP server.
+         *
+         * This is the simplest of all @c connect(...) overloads.  It binds
+         * @a stream to any IP address on the machine and automatically selects
+         * a random port.
+         *
+         * @param[in,out] stream Socket over which data will be exchanged with
+         *  the TCP server.
+         * @param[in] peer IP address of the server to which @a stream should
+         *  be connected.
+         * @return A promise to establish a TCP connection with @a peer.
+         *  This promise will be fulfilled as soon as @a stream is connected.
+         *
+         * @see accept
+         * @see disconnect
+         */
         Promise connect (w32::net::tcp::Stream stream,
                          w32::net::ipv4::EndPoint peer);
+
+        /*!
+         * @brief Connect to a TCP server.
+         *
+         * In addition to connecting @a stream to @a peer, this overload allows
+         * you to select the IP address to which @a stream should be bound.
+         * This allows you to use a specific network card when the host
+         * computer has more than one.  A random port is automatically selected
+         * when binding @a stream.
+         *
+         * @param[in,out] stream Socket over which data will be exchanged with
+         *  the TCP server.
+         * @param[in] peer IP address of the server to which @a stream should
+         *  be connected.
+         * @param[in] host IP address to which @a stream should be bound.
+         * @return A promise to establish a TCP connection with @a peer.
+         *  This promise will be fulfilled as soon as @a stream is connected.
+         *
+         * @see accept
+         * @see disconnect
+         */
         Promise connect (w32::net::tcp::Stream stream,
                          w32::net::ipv4::EndPoint peer,
                          w32::net::ipv4::Address host);
+
+        /*!
+         * @brief Connect to a TCP server.
+         *
+         * In addition to connecting @a stream to @a peer, this overload allows
+         * you to select the IP address and port to which @a stream should be
+         * bound.  This allows you to use a specific network card, as well as a
+         * pre-determined port number when binding @a stream.
+         *
+         * @param[in,out] stream Socket over which data will be exchanged with
+         *  the TCP server.
+         * @param[in] peer IP address of the server to which @a stream should
+         *  be connected.
+         * @param[in] host IP address to which @a stream should be bound.
+         * @return A promise to establish a TCP connection with @a peer.
+         *  This promise will be fulfilled as soon as @a stream is connected.
+         *
+         * @see accept
+         * @see disconnect
+         */
         Promise connect (w32::net::tcp::Stream stream,
                          w32::net::ipv4::EndPoint peer,
                          w32::net::ipv4::EndPoint host);
@@ -290,22 +410,51 @@ namespace cz {
         /*!
          * @brief Connect to a TCP server.
          *
+         * In contrast to other overloads, this one provides all options
+         * combined: the ability to select the IP address and port to which
+         * @a stream will be bound, and the ability to send the data in
+         * @a buffer while establishing the connection.
+         *
+         * @param[in,out] stream Socket over which data will be exchanged with
+         *  the TCP server.
+         * @param[in] peer IP address of the server to which @a stream should
+         *  be connected.
+         * @param[in] host IP address to which @a stream should be bound.
          * @param[in,out] buffer Data to send to the server as soon as the
          *  connection is established.
+         * @return A promise to establish a TCP connection with @a peer.
+         *  This promise will be fulfilled when at least 1 byte is written into
+         *  @a buffer.
          *
-         * @see get(w32::net::StreamSocket,void*,size_t)
-         * @see put(w32::net::StreamSocket,const void*,size_t)
+         * @see accept
          * @see disconnect
          */
         Promise connect (w32::net::tcp::Stream stream,
                          w32::net::ipv4::EndPoint peer,
                          w32::net::ipv4::EndPoint host, Buffer& buffer);
 
+        /*!
+         * @brief Wait for a connection from a TCP client.
+         *
+         * @pre @a listener has been bound to @c *this.
+         * @pre @a stream has been bound to @c *this.
+         *
+         * @param[in,out] listener Listening socket that has been bound and is
+         *  in the "listening" state.
+         * @param[in,out] stream Socket that will be used to transfer data to
+         *  and from the peer after the connection is established.
+         * @return A promise to establish a TCP connection when @a listener
+         *  receives a TCP handshake.  This promise will be fulfilled as soon
+         *  as the connection is established.
+         *
+         * @see accept
+         * @see disconnect
+         */
         Promise accept (w32::net::tcp::Listener listener,
                         w32::net::tcp::Stream stream);
 
         /*!
-         * @brief Connect to a TCP server.
+         * @brief Wait for a connection from a TCP client.
          *
          * @attention When using a buffer to receive an initial payload, the
          *  promise will not be fulfilled until the client sends at least 1
@@ -314,13 +463,19 @@ namespace cz {
          *  multiple parallel accept requests and polling them to detect
          *  inactive connections.
          *
+         * @pre @a listener has been bound to the engine.
+         *
          * @param[in,out] listener TCP "server" socket that is listening for
          *  incoming connections.
          * @param[in,out] stream TCP "client" socket that will be connected
          *  when this promise fulfills.
          * @param[in,out] buffer Buffer that will receive data sent by the
          *  client when connection is established.
+         * @return A promise to establish a TCP connection when @a listener
+         *  receives a TCP handshake.  This promise will be fulfilled when at
+         *  least 1 byte is received over @a stream and written to @a buffer.
          *
+         * @see bind(w32::net::tcp::Listener&)
          * @see connect
          * @see get(w32::net::StreamSocket,void*,size_t)
          * @see put(w32::net::StreamSocket,const void*,size_t)
@@ -332,6 +487,8 @@ namespace cz {
         /*!
          * @brief Read data from a TCP socket.
          *
+         * @pre @a stream has been bound to the engine.
+         *
          * @param[in,out] stream Input stream to read from.
          * @param[out] data Buffer into which data read from @a stream will be
          *  copied.  This buffer will receive up to @a size bytes.
@@ -341,6 +498,7 @@ namespace cz {
          *  @a data.  This promise will be fulfilled when @a stream has
          *  available data.
          *
+         * @see bind(w32::net::StreamSocket&)
          * @see accept
          * @see connect
          * @see put(w32::net::StreamSocket,const void*,size_t)
@@ -384,6 +542,7 @@ namespace cz {
          *  catching data from the wrong connection and corrupting the data
          *  stream (see RFC 793).
          *
+         * @pre @a stream has been bound to the engine.
          * @pre @a stream is connected.
          * @pre Linger has been configured on @a stream (the system default of
          *  indefinite timeout applies unless explicitly overriden).
@@ -632,6 +791,7 @@ namespace cz {
     };
 
 
+#if 0
     /*!
      * @ingroup requests
      * @brief %Request to wait for a waitable timer to expire.
@@ -689,6 +849,7 @@ namespace cz {
         bool ready () const;
         void reset (); // call before calling `start()` again.
     };
+#endif
 
 }
 

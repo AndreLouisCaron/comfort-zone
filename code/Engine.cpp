@@ -25,11 +25,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "Engine.hpp"
+#include "Buffer.hpp"
 #include "Computation.hpp"
-#include "FileReader.hpp"
-#include "FileWriter.hpp"
-#include "Listener.hpp"
-#include "SocketChannel.hpp"
 #include "Promise.hpp"
 
 #include "trace.hpp"
@@ -55,14 +52,24 @@ namespace cz {
         return (myHub);
     }
 
-    w32::io::CompletionPort& Engine::completion_port ()
+    void Engine::bind (w32::net::tcp::Listener& listener)
     {
-        return (myCompletionPort);
+        myCompletionPort.bind(listener.handle(), this);
     }
 
-    w32::tp::Queue& Engine::thread_pool_queue ()
+    void Engine::bind (w32::net::tcp::Stream& stream)
     {
-        return (myThreadPoolQueue);
+        myCompletionPort.bind(stream.handle(), this);
+    }
+
+    void Engine::bind (w32::io::InputFile& stream)
+    {
+        myCompletionPort.bind(stream.handle(), this);
+    }
+
+    void Engine::bind (w32::io::OutputFile& stream)
+    {
+        myCompletionPort.bind(stream.handle(), this);
     }
 
     void Engine::process (w32::io::Notification notification)
@@ -170,15 +177,46 @@ namespace cz {
             ;
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to establish an outbound TCP connection.
+     *
+     * @see Engine::connect
+     * @see AcceptPromise
+     *
+     * @todo Support sending immediately after establishing the connection.
+     */
     struct ConnectPromise :
         public Promise::Data
     {
+        /// @brief Socket that should be completed.
         w32::net::tcp::Stream socket;
+
+        /// @brief Pointer to the @c ConnectEx(...) function.
+        ///
+        /// The @c ConnectEx(...) function must be obtained dynamically.
         w32::net::tcp::Stream::ConnectEx connect_ex;
+
+        /// @brief IP endpoint to which @c socket should be connected.
         w32::net::ipv4::EndPoint peer;
+
+        /// @brief IP endpoint to which @c socket should be bound.
         w32::net::ipv4::EndPoint host;
+
+        /// @brief Number of bytes sent as the initial payload.
+        ///
+        /// @attention Value is undefined until the promise is settled.
         w32::dword sent;
 
+        /*!
+         * @brief Prepare an async socket @c connect(...) call.
+         * @param[in,out] engine
+         * @param[in,out] task
+         * @param[in,out] socket
+         * @param[in] peer
+         * @param[in] host
+         */
         ConnectPromise (Engine& engine, Task& task,
                         w32::net::tcp::Stream socket,
                         const w32::net::ipv4::EndPoint& peer,
@@ -192,6 +230,7 @@ namespace cz {
         {
             this->post_process = &ConnectPromise::recover_endpoints;
             this->cleanup = &destroy<ConnectPromise>;
+            this->cancel = &Promise::Data::abort<ConnectPromise>;
 
             // For some strnage reason, the socket MUST be bound before using
             // `ConnectEx()`.  Bind it to whatever address was supplied by the
@@ -207,6 +246,9 @@ namespace cz {
             }
         }
 
+        /*!
+         * @brief Start the asynchronous operation.
+         */
         void start ()
         {
             // Increase the reference count to prevent the promise data from
@@ -236,9 +278,26 @@ namespace cz {
             this->state = Promise::Busy;
         }
 
-        bool abort ()
+        /*!
+         * @brief Cancel the asynchronous operation.
+         *
+         * @param[in,out] promise Promise that should be cancelled.
+         * @return @c false (even if the cancel is successful and synchronous,
+         *  an I/O completion notification will be posted to the I/O completion
+         *  port, and it's simpler to deal with that notification in the usual
+         *  manner).
+         *
+         * @attention @a promise can be fulfilled despite your attempt to
+         *  cancel it.  The reason is that there is a natural race condition:
+         *  the asynchronous operation may have already completed and the I/O
+         *  completion notification may already be queued in the I/O completion
+         *  port.
+         *
+         * @note This is a trampoline function for C-style "virtual method".
+         */
+        static bool abort (ConnectPromise& promise)
         {
-            if (this->socket.cancel(*this)) {
+            if (promise.socket.cancel(promise)) {
                 // Cancel was synchronous, but we'll still receive a
                 // completion notification so don't fulfill the promise quite
                 // yet.
@@ -246,11 +305,19 @@ namespace cz {
             return (false);
         }
 
-        static bool abort (void * context) {
-            return (static_cast<ConnectPromise*>(context)->abort());
-        }
-
-        // Called by hub when processing the completion notification.
+        /*!
+         * @brief Recover the host and peer IP endpoints.
+         *
+         * When using the asynchronous socket connect operation, the endpoints
+         * are not automatically recovered, which causes the @c getsockname()
+         * and @c getpeername() to return undefined results.  This
+         * post-processing fixes them in case they are used by the application.
+         *
+         * @note This method is called by hub when processing the completion
+         *  notification.
+         *
+         * @see recover_endpoints(void*)
+         */
         void recover_endpoints ()
         {
             if (this->completion_status == ERROR_OPERATION_ABORTED) {
@@ -271,6 +338,14 @@ namespace cz {
             }
         }
 
+        /*!
+         * @internal
+         * @brief Trampoline function for C-style "virtual method".
+         *
+         * @param[in,out] context Pointer to the @c ConnectPromise.
+         *
+         * @see recover_endpoints()
+         */
         static void recover_endpoints (void * context) {
             static_cast<ConnectPromise*>(context)->recover_endpoints();
         }
@@ -300,21 +375,76 @@ namespace cz {
         return (Promise(promise));
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to establish an inbound TCP connection.
+     *
+     * @see Engine::accept
+     * @see AcceptPromise
+     *
+     * @todo Support receiving while establishing the connection.  Requires
+     *  the possibility to measure how long the connection has been
+     *  established, etc. in order to be able to cancel it (to protect against
+     *  an obvious D.o.S. attack).
+     */
     struct AcceptPromise :
         public Promise::Data
     {
+        /// @internal
+        /// @brief Size of the application buffer reserved for a single IP
+        ///  endpoint.
+        ///
+        /// @see double_endpoint_size
         static const size_t single_endpoint_size = sizeof(::sockaddr_in) + 16;
+
+        /// @internal
+        /// @brief Size of the application buffer reserved for both IP
+        ///  endpoints.
+        ///
+        /// When using the @c AcceptEx(...) call, the IP endpoints are written
+        /// into the application buffer.  This amount space needs to be
+        /// reserved for use by the system.
+        ///
+        /// @see single_endpoint_size
         static const size_t double_endpoint_size = 2 * single_endpoint_size;
 
+        /// @brief TCP listener that is listening for incoming TCP connections.
         w32::net::tcp::Listener listener;
+
+        /// @brief Socket that will be used to exchange data with the client.
         w32::net::tcp::Stream stream;
+
+        /// @brief Pointer to the @c AcceptEx(...) function.
+        ///
+        /// The @c AcceptEx(...) function must be obtained dynamically.
         w32::net::tcp::Listener::AcceptEx accept_ex;
+
+        /// @brief Pointer to the @c GetAcceptExSockAddrs(...) function.
+        ///
+        /// The @c GetAcceptExSockAddrs(...) function must be obtained
+        /// dynamically.
         w32::net::tcp::Listener::GetAcceptExSockAddrs get_accept_ex_sock_addrs;
+
+        /// @brief IP endpoint to which @c stream should be bound.
         w32::net::ipv4::EndPoint host;
+
+        /// @brief IP endpoint to which @c stream will be connected.
         w32::net::ipv4::EndPoint peer;
+
+        /// @brief Amount of data received in the initial payload.
         w32::dword xferred;
+
+        /// @brief Buffer into which the initial payload will be written.
         Buffer buffer;
 
+        /*!
+         * @brief Prepare an asynchronous socket @c accept(...) call.
+         * @param[in,out] engine
+         * @param[in,out] task
+         * @param[in,out] listener
+         * @param[in,out] stream
+         */
         AcceptPromise (Engine& engine, Task& task,
                        w32::net::tcp::Listener listener,
                        w32::net::tcp::Stream stream)
@@ -328,8 +458,12 @@ namespace cz {
         {
             this->post_process = &AcceptPromise::recover_endpoints;
             this->cleanup = &destroy<AcceptPromise>;
+            this->cancel = &Promise::Data::abort<AcceptPromise>;
         }
 
+        /*!
+         * @brief Start the asynchronous operation.
+         */
         void start ()
         {
             // Increase the reference count to prevent the promise data from
@@ -362,9 +496,26 @@ namespace cz {
             this->state = Promise::Busy;
         }
 
-        bool abort ()
+        /*!
+         * @brief Cancel the asynchronous operation.
+         *
+         * @param[in,out] promise Promise that should be cancelled.
+         * @return @c false (even if the cancel is successful and synchronous,
+         *  an I/O completion notification will be posted to the I/O completion
+         *  port, and it's simpler to deal with that notification in the usual
+         *  manner).
+         *
+         * @attention @a promise can be fulfilled despite your attempt to
+         *  cancel it.  The reason is that there is a natural race condition:
+         *  the asynchronous operation may have already completed and the I/O
+         *  completion notification may already be queued in the I/O completion
+         *  port.
+         *
+         * @note This is a trampoline function for C-style "virtual method".
+         */
+        static bool abort (AcceptPromise& promise)
         {
-            if (this->listener.cancel(*this)) {
+            if (promise.listener.cancel(promise)) {
                 // Cancel was synchronous, but we'll still receive a
                 // completion notification so don't fulfill the promise quite
                 // yet.
@@ -372,11 +523,19 @@ namespace cz {
             return (false);
         }
 
-        static bool abort (void * context) {
-            return (static_cast<AcceptPromise*>(context)->abort());
-        }
-
-        // Called by hub when processing the completion notification.
+        /*!
+         * @brief Recover the host and peer IP endpoints.
+         *
+         * When using the asynchronous socket accept operation, the endpoints
+         * are not automatically recovered, which causes the @c getsockname()
+         * and @c getpeername() to return undefined results.  This
+         * post-processing fixes them in case they are used by the application.
+         *
+         * @note This method is called by hub when processing the completion
+         *  notification.
+         *
+         * @see recover_endpoints(void*)
+         */
         void recover_endpoints ()
         {
             if (this->completion_status == ERROR_OPERATION_ABORTED) {
@@ -428,6 +587,14 @@ namespace cz {
             this->peer = *reinterpret_cast<const ::sockaddr_in*>(pdata);
         }
 
+        /*!
+         * @internal
+         * @brief Trampoline function for C-style "virtual method".
+         *
+         * @param[in,out] context Pointer to the @c AcceptPromise.
+         *
+         * @see recover_endpoints()
+         */
         static void recover_endpoints (void * context) {
             static_cast<AcceptPromise*>(context)->recover_endpoints();
         }
@@ -443,12 +610,34 @@ namespace cz {
         return (Promise(promise));
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to read from a TCP socket.
+     *
+     * @see Engine::get
+     * @see AcceptPromise
+     * @see ConnectPromise
+     * @see PutPromise
+     * @see DisconnectPromise
+     */
     struct GetPromise :
         public Promise::Data
     {
+        /// @brief Socket from which data should be read.
         w32::net::StreamSocket socket;
+
+        /// @brief Number of bytes read from @c socket.
+        ///
+        /// @attention Value is undefined until the promise is settled.
         w32::dword result;
 
+        /*!
+         * @brief Prepare an async socket @c recv(...) call.
+         * @param[in,out] engine
+         * @param[in,out] task
+         * @param[in,out] socket
+         */
         GetPromise (Engine& engine, Task& task,
                     w32::net::StreamSocket socket)
             : Promise::Data(engine, task)
@@ -457,8 +646,12 @@ namespace cz {
         {
             this->post_process = &GetPromise::check_status;
             this->cleanup = &destroy<GetPromise>;
+            this->cancel = &Promise::Data::abort<GetPromise>;
         }
 
+        /*!
+         * @brief Start the asynchronous operation.
+         */
         void start (void * data, size_t size)
         {
             // Increase the reference count to prevent the promise data from
@@ -479,9 +672,26 @@ namespace cz {
             this->state = Promise::Busy;
         }
 
-        bool abort ()
+        /*!
+         * @brief Cancel the asynchronous operation.
+         *
+         * @param[in,out] promise Promise that should be cancelled.
+         * @return @c false (even if the cancel is successful and synchronous,
+         *  an I/O completion notification will be posted to the I/O completion
+         *  port, and it's simpler to deal with that notification in the usual
+         *  manner).
+         *
+         * @attention @a promise can be fulfilled despite your attempt to
+         *  cancel it.  The reason is that there is a natural race condition:
+         *  the asynchronous operation may have already completed and the I/O
+         *  completion notification may already be queued in the I/O completion
+         *  port.
+         *
+         * @note This is a trampoline function for C-style "virtual method".
+         */
+        static bool abort (GetPromise& promise)
         {
-            if (this->socket.cancel(*this)) {
+            if (promise.socket.cancel(promise)) {
                 // Cancel was synchronous, but we'll still receive a
                 // completion notification so don't fulfill the promise quite
                 // yet.
@@ -489,11 +699,18 @@ namespace cz {
             return (false);
         }
 
-        static bool abort (void * context) {
-            return (static_cast<GetPromise*>(context)->abort());
-        }
-
-        // Called by hub when processing the completion notification.
+        /*!
+         * @brief Check for error code in I/O completion notification.
+         *
+         * When using the asynchronous I/O operations, it's possible that the
+         * I/O operation fails asynchronously, in which case an error code will
+         * be reported in the I/O completion notification' status.
+         *
+         * @note This method is called by hub when processing the completion
+         *  notification.
+         *
+         * @see check_status(void*)
+         */
         void check_status ()
         {
             if (this->completion_status == ERROR_OPERATION_ABORTED) {
@@ -509,6 +726,14 @@ namespace cz {
             }
         }
 
+        /*!
+         * @internal
+         * @brief Trampoline function for C-style "virtual method".
+         *
+         * @param[in,out] context Pointer to the @c PutPromise.
+         *
+         * @see check_status()
+         */
         static void check_status (void * context) {
             return (static_cast<GetPromise*>(context)->check_status());
         }
@@ -523,12 +748,34 @@ namespace cz {
         return (Promise(promise));
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to write to a TCP socket.
+     *
+     * @see Engine::put
+     * @see AcceptPromise
+     * @see ConnectPromise
+     * @see GetPromise
+     * @see DisconnectPromise
+     */
     struct PutPromise :
         public Promise::Data
     {
+        /// @brief Socket to which data should be written.
         w32::net::StreamSocket socket;
+
+        /// @brief Number of bytes read from @c socket.
+        ///
+        /// @attention Value is undefined until the promise is settled.
         w32::dword result;
 
+        /*!
+         * @brief Prepare an async socket @c send(...) call.
+         * @param[in,out] engine
+         * @param[in,out] task
+         * @param[in,out] socket
+         */
         PutPromise (Engine& engine, Task& task,
                     w32::net::StreamSocket socket)
             : Promise::Data(engine, task)
@@ -537,8 +784,12 @@ namespace cz {
         {
             this->post_process = &PutPromise::check_status;
             this->cleanup = &destroy<PutPromise>;
+            this->cancel = &Promise::Data::abort<PutPromise>;
         }
 
+        /*!
+         * @brief Start the asynchronous operation.
+         */
         void start (const void * data, size_t size)
         {
             // Increase the reference count to prevent the promise data from
@@ -559,9 +810,26 @@ namespace cz {
             this->state = Promise::Busy;
         }
 
-        bool abort ()
+        /*!
+         * @brief Cancel the asynchronous operation.
+         *
+         * @param[in,out] promise Promise that should be cancelled.
+         * @return @c false (even if the cancel is successful and synchronous,
+         *  an I/O completion notification will be posted to the I/O completion
+         *  port, and it's simpler to deal with that notification in the usual
+         *  manner).
+         *
+         * @attention @a promise can be fulfilled despite your attempt to
+         *  cancel it.  The reason is that there is a natural race condition:
+         *  the asynchronous operation may have already completed and the I/O
+         *  completion notification may already be queued in the I/O completion
+         *  port.
+         *
+         * @note This is a trampoline function for C-style "virtual method".
+         */
+        static bool abort (PutPromise& promise)
         {
-            if (this->socket.cancel(*this)) {
+            if (promise.socket.cancel(promise)) {
                 // Cancel was synchronous, but we'll still receive a
                 // completion notification so don't fulfill the promise quite
                 // yet.
@@ -569,11 +837,18 @@ namespace cz {
             return (false);
         }
 
-        static bool abort (void * context) {
-            return (static_cast<PutPromise*>(context)->abort());
-        }
-
-        // Called by hub when processing the completion notification.
+        /*!
+         * @brief Check for error code in I/O completion notification.
+         *
+         * When using the asynchronous I/O operations, it's possible that the
+         * I/O operation fails asynchronously, in which case an error code will
+         * be reported in the I/O completion notification' status.
+         *
+         * @note This method is called by hub when processing the completion
+         *  notification.
+         *
+         * @see check_status(void*)
+         */
         void check_status ()
         {
             if (this->completion_status == ERROR_OPERATION_ABORTED) {
@@ -589,6 +864,14 @@ namespace cz {
             }
         }
 
+        /*!
+         * @internal
+         * @brief Trampoline function for C-style "virtual method".
+         *
+         * @param[in,out] context Pointer to the @c PutPromise.
+         *
+         * @see check_status()
+         */
         static void check_status (void * context) {
             return (static_cast<PutPromise*>(context)->check_status());
         }
@@ -603,11 +886,29 @@ namespace cz {
         return (Promise(promise));
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to disconnect a TCP socket.
+     *
+     * @see Engine::disconnect
+     * @see AcceptPromise
+     * @see ConnectPromise
+     * @see GetPromise
+     * @see PutPromise
+     */
     struct DisconnectPromise :
         public Promise::Data
     {
+        /// @brief Socket that should be disconnected.
         w32::net::StreamSocket socket;
 
+        /*!
+         * @brief Prepare an async socket @c shutdown(...) call.
+         * @param[in,out] engine
+         * @param[in,out] task
+         * @param[in,out] socket
+         */
         DisconnectPromise (Engine& engine, Task& task,
                            w32::net::StreamSocket socket)
             : Promise::Data(engine, task)
@@ -615,8 +916,12 @@ namespace cz {
         {
             this->post_process = &DisconnectPromise::check_status;
             this->cleanup = &destroy<DisconnectPromise>;
+            this->cancel = &Promise::Data::abort<DisconnectPromise>;
         }
 
+        /*!
+         * @brief Start the asynchronous operation.
+         */
         void start ()
         {
             // Increase the reference count to prevent the promise data from
@@ -637,9 +942,26 @@ namespace cz {
             this->state = Promise::Busy;
         }
 
-        bool abort ()
+        /*!
+         * @brief Cancel the asynchronous operation.
+         *
+         * @param[in,out] promise Promise that should be cancelled.
+         * @return @c false (even if the cancel is successful and synchronous,
+         *  an I/O completion notification will be posted to the I/O completion
+         *  port, and it's simpler to deal with that notification in the usual
+         *  manner).
+         *
+         * @attention @a promise can be fulfilled despite your attempt to
+         *  cancel it.  The reason is that there is a natural race condition:
+         *  the asynchronous operation may have already completed and the I/O
+         *  completion notification may already be queued in the I/O completion
+         *  port.
+         *
+         * @note This is a trampoline function for C-style "virtual method".
+         */
+        static bool abort (DisconnectPromise& promise)
         {
-            if (this->socket.cancel(*this)) {
+            if (promise.socket.cancel(promise)) {
                 // Cancel was synchronous, but we'll still receive a
                 // completion notification so don't fulfill the promise quite
                 // yet.
@@ -647,11 +969,18 @@ namespace cz {
             return (false);
         }
 
-        static bool abort (void * context) {
-            return (static_cast<DisconnectPromise*>(context)->abort());
-        }
-
-        // Called by hub when processing the completion notification.
+        /*!
+         * @brief Check for error code in I/O completion notification.
+         *
+         * When using the asynchronous I/O operations, it's possible that the
+         * I/O operation fails asynchronously, in which case an error code will
+         * be reported in the I/O completion notification' status.
+         *
+         * @note This method is called by hub when processing the completion
+         *  notification.
+         *
+         * @see check_status(void*)
+         */
         void check_status ()
         {
             if (this->completion_status == ERROR_OPERATION_ABORTED) {
@@ -662,6 +991,14 @@ namespace cz {
             }
         }
 
+        /*!
+         * @internal
+         * @brief Trampoline function for C-style "virtual method".
+         *
+         * @param[in,out] context Pointer to the @c DisconnectPromise.
+         *
+         * @see check_status()
+         */
         static void check_status (void * context)
         {
             static_cast<DisconnectPromise*>(context)->check_status();
@@ -678,7 +1015,11 @@ namespace cz {
 
     /*!
      * @internal
-     * @brief Bookkeeping for promise to acquire kernel waitable object.
+     * @ingroup promises
+     * @brief Promise to wait for a kernel object to enter its signaled state.
+     *
+     * @attention For some objects (e.g. a mutex, a semaphore or an auto-reset
+     *  event), a satisfied wait atomically modifies the state of the object.
      *
      * Implements the opreation required to:
      * - acquire a mutex;
@@ -694,13 +1035,26 @@ namespace cz {
     struct WaitPromise :
         public Promise::Data
     {
+        /// @brief Waitable kernel object to acquire/wait for.
         w32::Waitable topic;
+
+        /// @brief Request to wait for @c topic in the thread pool.
+        ///
+        /// @attention Using this ensures thread pool threads multiplex waits
+        ///  for kernal objects -- means a single thread can wait for up to
+        ///  64 waitable kernel objects at once.
         w32::tp::Wait watch;
 
+        /*!
+         * @brief Prepare an async @c WaitForSingleObject(...) call.
+         * @param[in,out] engine
+         * @param[in,out] task
+         * @param[in,out] topic
+         */
         WaitPromise (Engine& engine, Task& task, w32::Waitable topic)
             : Promise::Data(engine, task)
             , topic(topic)
-            , watch(engine.thread_pool_queue(), this,
+            , watch(thread_pool_queue(engine), this,
                     w32::tp::Wait::function<&WaitPromise::unblock_hub>())
         {
             // TODO: use our own callback.
@@ -712,8 +1066,13 @@ namespace cz {
             this->cleanup = &destroy<WaitPromise>;
         }
 
-        // NOTE: used to avoid the risk of having the callback execute prior to
-        //       the object's constructor completing execution.
+        /*!
+         * @brief Start the asynchronous operation.
+         *
+         * @note The operation is not started in the constructor to avoid the
+         *  risk of having the callback execute prior to the object's
+         *  constructor completing execution.
+         */
         void start ()
         {
             // Increase the reference count to prevent the promise data from
@@ -730,7 +1089,7 @@ namespace cz {
             this->state = Promise::Busy;
 
             // Schedule wait in thread pool.  When the waitable object is
-            // signaled, the `Request` object's `wait_callback` will post a
+            // signaled, the `Promise` object's `wait_callback` will post a
             // completion notification to the I/O completion port and the hub
             // will resume us.
             this->watch.watch(this->topic.handle());
@@ -742,6 +1101,13 @@ namespace cz {
             //       hub to process.
         }
 
+        /*!
+         * @brief Entry point for tasks that run in the thread pool.
+         *
+         * @param[in,out] hints Means for the task to provide feedback to the
+         *  thread pool about what's going on.
+         * @param[in,out] context Pointer to the @c WaitPromise.
+         */
         static void unblock_hub (w32::tp::Hints& hints, void * context)
         {
             // NOTE: this callback executes in a thread from the thread pool.
@@ -752,7 +1118,7 @@ namespace cz {
             // and allow it to fulfill the promise and resume the task that
             // initiated the asynchronous operations.
             WaitPromise& data = *static_cast<WaitPromise*>(context);
-            data.engine->completion_port().post(0, data.engine, &data);
+            completion_port(*data.engine).post(0, data.engine, &data);
         }
     };
 
@@ -972,16 +1338,44 @@ namespace cz {
         promises.mark_as_fulfilled(task.mySlave->myLastPromise);
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to perform an operation in a background thread.
+     *
+     * This is simply a base class for reuse-by-inheritance.
+     *
+     * @see WorkPromise
+     * @see BlockingGetPromise
+     * @see BlockingPutPromise
+     */
     struct BackgroundWorkPromise :
         public Promise::Data
     {
+        /// @brief Request to perform work in thread pool.
+        ///
+        /// @attention Using this ensures that we don't spawn a new thread for
+        ///  each computation.  When a thread pool thread completes one
+        /// operation, it will check the thead pool's queue for more work (or a
+        /// shutdown signal).
         w32::tp::Work job;
+
+        /// @brief "Virtual method" that performs the work.
+        ///
+        /// @attention This @e must be set by base classes.
         w32::dword(*execute)(w32::tp::Hints&, void*);
 
+        /*!
+         * @brief Prepare an async thread pool task execution.
+         * @param[in,out] engine Engine to which the completion notification
+         *  will be reported.
+         * @param[in,out] task Task to which the promise was issued.
+         */
         BackgroundWorkPromise (Engine& engine, Task& task)
             : Promise::Data(engine, task)
-            , job(engine.thread_pool_queue(), this,
+            , job(thread_pool_queue(engine), this,
                   w32::tp::Work::function<&BackgroundWorkPromise::entry_point>())
+            , execute(0)
         {
             // TODO: stop using abstraction that forces using "this" pointer in
             //       initialization list.  Use these directly instead:
@@ -990,8 +1384,13 @@ namespace cz {
             this->cleanup = &destroy<BackgroundWorkPromise>;
         }
 
-        // NOTE: used to avoid the risk of having the callback execute prior to
-        //       the object's constructor completing execution.
+        /*!
+         * @brief Start the asynchronous operation.
+         *
+         * @note The operation is not started in the constructor to avoid the
+         *  risk of having the callback execute prior to the object's
+         *  constructor completing execution.
+         */
         void start ()
         {
             // Increase the reference count to prevent the promise data from
@@ -1008,7 +1407,7 @@ namespace cz {
             this->state = Promise::Busy;
 
             // Schedule wait in thread pool.  When the waitable object is
-            // signaled, the `Request` object's `wait_callback` will post a
+            // signaled, the `Promise` object's `wait_callback` will post a
             // completion notification to the I/O completion port and the hub
             // will resume us.
             this->job.submit();
@@ -1020,6 +1419,13 @@ namespace cz {
             //       hub to process.
         }
 
+        /*!
+         * @brief Entry point for tasks that run in the thread pool.
+         *
+         * @param[in,out] hints Means for the task to provide feedback to the
+         *  thread pool about what's going on.
+         * @param[in,out] context Pointer to the @c BackgroundWorkPromise.
+         */
         static void entry_point (w32::tp::Hints& hints, void * context)
         {
             // NOTE: this callback executes in a thread from the thread pool.
@@ -1048,15 +1454,28 @@ namespace cz {
             // Send hub a completion notification.  This will unblock the hub
             // and allow it to fulfill the promise and resume the task that
             // initiated the asynchronous operations.
-            data.engine->completion_port().post(result, data.engine, &data);
+            completion_port(*data.engine).post(result, data.engine, &data);
         }
     };
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to perform a computation in a background thread.
+     */
     struct WorkPromise :
         public BackgroundWorkPromise
     {
+        /// @brief Functor that should be called in a thread pool thread.
         Computation& computation;
 
+        /*!
+         * @brief Prepare an async thread pool task execution.
+         * @param[in,out] engine Engine to which the completion notification
+         *  will be reported.
+         * @param[in,out] task Task that requested the asynchronous operation.
+         * @param[in,out] computation Functor to execute in the thread pool.
+         */
         WorkPromise (Engine& engine, Task& task, Computation& computation)
             : BackgroundWorkPromise(engine, task)
             , computation(computation)
@@ -1065,6 +1484,16 @@ namespace cz {
             this->execute = &WorkPromise::execute_computation;
         }
 
+        /*!
+         * @brief Entry point for tasks that run in the thread pool.
+         *
+         * @param[in,out] hints Means for the task to provide feedback to the
+         *  thread pool about what's going on.
+         * @param[in,out] context Pointer to the @c WorkPromise.
+         * @return The "completion result" that should be assigned to the
+         *  promise when it is settled by the engine when receiving the
+         * completion notification.
+         */
         static w32::dword execute_computation (w32::tp::Hints& hints,
                                                void * context)
         {
@@ -1098,13 +1527,43 @@ namespace cz {
         return (Promise(data));
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to read from a (possibly) blocking input stream.
+     *
+     * Synchronous read is made asynchronous by reading in a background thread.
+     * Hopefully, this doesn't block for too long (e.g. when reading from a file
+     * opened for blocking I/O), but it may block for quite a while on a the standard input
+     * or an anonymous pipe when the remote end is not being written to
+     * quickly enough.  Hopefully, the application is not manipulating too many
+     * blocking streams.
+     */
     struct BlockingGetPromise :
         public BackgroundWorkPromise
     {
+        /// @brief Non-overlapped stream from which to read data.
         w32::io::InputStream stream;
+
+        /// @brief Application buffer into which data should be written.
         void * data;
+
+        /// @brief Maximum number of bytes to write in @c data.
         size_t size;
 
+        /*!
+         * @brief Prepare an async @c ReadFile(...) call.
+         *
+         * @param[in,out] engine Engine to which the completion notification
+         *  will be reported.
+         * @param[in,out] task Task that requested the asynchronous operation.
+         * @param[in,out] stream Non-overlapped input stream from which up to
+         *  @a size bytes should be consumed.
+         * @param[in,out] data Buffer into which up to @a size bytes will be
+         *  written.
+         * @param[in] size Maximum amount of data (in bytes) to consume from
+         *  @a stream and write to @a data.
+         */
         BlockingGetPromise (Engine& engine, Task& task,
                             w32::io::InputStream stream,
                             void * data, size_t size)
@@ -1115,9 +1574,27 @@ namespace cz {
         {
             this->cleanup = &destroy<BlockingGetPromise>;
             this->execute = &BlockingGetPromise::perform_io;
+            this->cancel = &Promise::Data::abort<BlockingGetPromise>;
         }
 
-        bool abort ()
+        /*!
+         * @brief Cancel the asynchronous operation.
+         *
+         * @param[in,out] promise Promise that should be cancelled.
+         * @return @c false (we don't know if a notification will be sent when
+         *  cancelling the I/O because it may have already completed -- it's
+         *  easier to force a notification in all cases and wait for that
+         *  notifcation before completing the request).
+         *
+         * @attention @a promise can be fulfilled despite your attempt to
+         *  cancel it.  The reason is that there is a natural race condition:
+         *  the asynchronous operation may have already completed and the I/O
+         *  completion notification may already be queued in the I/O completion
+         *  port.
+         *
+         * @note This is a trampoline function for C-style "virtual method".
+         */
+        static bool abort (BlockingGetPromise& promise)
         {
             // NOTE: since we get no confirmation about whether the background
             //       thread was still blocked on the stream when we tried to
@@ -1126,15 +1603,21 @@ namespace cz {
             //       let have the background thread send a completion in all
             //       cases, even when errors occur.  This shouldn't be a
             //       problem since cancellation is asynchronous for real async
-            // I/O streams as well.
-            this->stream.cancel();
+            //       I/O streams as well.
+            promise.stream.cancel();
             return (false);
         }
 
-        static bool abort (void * context) {
-            return (static_cast<BlockingGetPromise*>(context)->abort());
-        }
-
+        /*!
+         * @brief Entry point for tasks that run in the thread pool.
+         *
+         * @param[in,out] hints Means for the task to provide feedback to the
+         *  thread pool about what's going on.
+         * @param[in,out] context Pointer to the @c BlockingGetPromise.
+         * @return The "completion result" that should be assigned to the
+         *  promise when it is settled by the engine when receiving the
+         * completion notification.
+         */
         static w32::dword perform_io (w32::tp::Hints& hints, void * context)
         {
             BlockingGetPromise& promise =
@@ -1159,13 +1642,43 @@ namespace cz {
         return (Promise(promise));
     }
 
+    /*!
+     * @internal
+     * @ingroup promises
+     * @brief Promise to write on a (possibly) blocking output stream.
+     *
+     * Synchronous write is made asynchronous by writing in a background thread.
+     * Hopefully, this doesn't block for too long (e.g. when writing to the
+     * standard output), but it may block for quite a while on an anonymous pipe
+     * when the remote input buffer is full and its owner is not reading from it
+     * quickly enough.  Hopefully, the application is not manipulating too many
+     * blocking streams.
+     */
     struct BlockingPutPromise :
         public BackgroundWorkPromise
     {
+        /// @brief Non-overlapped stream to which data should be written.
         w32::io::OutputStream stream;
+
+        /// @brief Application buffer containing data to write.
         const void * data;
+
+        /// @brief Amount of data in the application buffer.
         size_t size;
 
+        /*!
+         * @brief Prepare an async @c WriteFile(...) call.
+         *
+         * @param[in,out] engine Engine to which the completion notification
+         *  will be reported.
+         * @param[in,out] task Task that requested the asynchronous operation.
+         * @param[in,out] stream Non-overlapped input stream to which up to
+         *  @a size bytes should be written.
+         * @param[in] data Buffer from which up to @a size bytes should be
+         *  read.
+         * @param[in] size Maximum amount of data (in bytes) to read from
+         *  @a data and write to @a stream.
+         */
         BlockingPutPromise (Engine& engine, Task& task,
                             w32::io::OutputStream stream,
                             const void * data, size_t size)
@@ -1176,9 +1689,27 @@ namespace cz {
         {
             this->cleanup = &destroy<BlockingPutPromise>;
             this->execute = &BlockingPutPromise::perform_io;
+            this->cancel = &Promise::Data::abort<BlockingPutPromise>;
         }
 
-        bool abort ()
+        /*!
+         * @brief Cancel the asynchronous operation.
+         *
+         * @param[in,out] promise Promise that should be cancelled.
+         * @return @c false (we don't know if a notification will be sent when
+         *  cancelling the I/O because it may have already completed -- it's
+         *  easier to force a notification in all cases and wait for that
+         *  notifcation before completing the request).
+         *
+         * @attention @a promise can be fulfilled despite your attempt to
+         *  cancel it.  The reason is that there is a natural race condition:
+         *  the asynchronous operation may have already completed and the I/O
+         *  completion notification may already be queued in the I/O completion
+         *  port.
+         *
+         * @note This is a trampoline function for C-style "virtual method".
+         */
+        static bool abort (BlockingPutPromise& promise)
         {
             // NOTE: since we get no confirmation about whether the background
             //       thread was still blocked on the stream when we tried to
@@ -1188,14 +1719,20 @@ namespace cz {
             //       cases, even when errors occur.  This shouldn't be a
             //       problem since cancellation is asynchronous for real async
             // I/O streams as well.
-            this->stream.cancel();
+            promise.stream.cancel();
             return (false);
         }
 
-        static bool abort (void * context) {
-            return (static_cast<BlockingGetPromise*>(context)->abort());
-        }
-
+        /*!
+         * @brief Entry point for tasks that run in the thread pool.
+         *
+         * @param[in,out] hints Means for the task to provide feedback to the
+         *  thread pool about what's going on.
+         * @param[in,out] context Pointer to the @c BlockingPutPromise.
+         * @return The "completion result" that should be assigned to the
+         *  promise when it is settled by the engine when receiving the
+         * completion notification.
+         */
         static w32::dword perform_io (w32::tp::Hints& hints, void * context)
         {
             BlockingPutPromise& promise =

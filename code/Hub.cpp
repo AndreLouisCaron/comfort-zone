@@ -263,16 +263,6 @@ namespace cz {
         return (myState == Task::Dead);
     }
 
-    void Task::pause ()
-    {
-        if (myState >= Dead) {
-            // TODO: throw something.
-        }
-        myState = Task::Paused;
-        mySlave->pause();
-        myState = Task::Running;
-    }
-
     Task& Task::current ()
     {
         void *const context = w32::mt::Fiber::context();

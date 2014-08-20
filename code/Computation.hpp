@@ -1,7 +1,7 @@
 #ifndef _cz_Computation_hpp__
 #define _cz_Computation_hpp__
 
-// Copyright (c) 2012, Andre Caron (andre.l.caron@gmail.com)
+// Copyright (c) 2014, Andre Caron (andre.l.caron@gmail.com)
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -28,12 +28,28 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "Engine.hpp"
-#include "Request.hpp"
 
 namespace cz {
 
     class Engine;
 
+    /*!
+     * @brief Base class for asynchronous execution of CPU-bound tasks.
+     *
+     * @c Task instances execute in fibers and therefore share the same thread.
+     * When you execute lengthy CPU-bound tasks directly in a @c Task instance,
+     * you run the risk of preventing I/O bound (control) tasks from running.
+     * The @c Engine::execute(Computation&) method allows you to schedule
+     * execution of a CPU-bound task in a background thread, thereby preventing
+     * this CPU-bound work from blocking I/O (control) tasks.
+     *
+     * @warning The @c Computation::execute() method runs in a "normal"
+     *  background thread.  In contrast with sharing state between @c Task
+     *  instances, sharing state between a @c Task and a @c Computation
+     *  requires synchronization (remember to use @ Engine methods for
+     *  synchronization in the @c Task and "normal" synchronization in the
+     *  @c Computation).
+     */
     class Computation
     {
         /* data. */
@@ -42,20 +58,55 @@ namespace cz {
 
         /* construction. */
     protected:
-        // Set `bounded` to false for anything that's expected to have
-        // unbounded performance and that shouldn't hog up a thread in the
-        // therad pool (e.g. blocking on the standard input).  Assume the worst
-        // and let specific tasks "optimize" as needed.
+        /*!
+         * @brief Prepares a computation for execution.
+         *
+         * @param[in] bounded Should be @c true when the application can
+         *  "guarantee" that the operation has a deterministic (and short) run
+         *  time.
+         *
+         * The @c Engine uses a thread pool to execution CPU-bound application
+         * computations.  This thread pool attempts to keep a fixed size, so
+         * that it can queue incoming tasks and execute all of them in a fixed
+         * number of threads.  However, it's possible that applications will
+         * perform some operations which don't have a deterministic run time
+         * (e.g. typically something that depends on an external resource).  In
+         * those cases, the application should set @a bounded to @c false so
+         * that the thread pool knows it can/should grow.
+         *
+         * @note Setting @a bounded to @c true gurantees that the thread pool
+         *  will not grow only to accomodate this new computation.  However,
+         *  setting it to @c false does not always result in spawning a new
+         *  thread (the system may use an idle thread from the thread pool if
+         *  it desires).
+         *
+         * @attention This class assumes the worst case (@a bounded is @c false
+         *  by default) and lets specific tasks "optimize" as needed by setting
+         *  @a bounded to @c true.
+         */
         Computation (bool bounded=false);
 
     public:
+        /*!
+         * @brief Cleanup resources allocated by the computation.
+         */
         virtual ~Computation ();
 
         /* methods. */
     public:
+        /*!
+         * @brief Check if the computation is known to be short.
+         *
+         * @return @c true if the task is known to have a deterministic run
+         *  time.  If it doesn't, the system @e may attempt to start a
+         *  dedicated background thread for the computation if none are
+         *  available in the thread pool.
+         */
         bool bounded () const;
 
-        // Will be called in thread pool.
+        /*!
+         * @brief Executes the application-defined computation.
+         */
         virtual void execute () = 0;
     };
 

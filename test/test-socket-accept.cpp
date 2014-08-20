@@ -30,6 +30,9 @@
 
 namespace {
 
+    /*!
+     * @brief Task that accepts @e one incoming connection.
+     */
     class TCPServer
         : public cz::Task
     {
@@ -49,8 +52,8 @@ namespace {
         {
             w32::net::tcp::Listener listener(myHost);
             w32::net::tcp::Stream stream;
-            myEngine.completion_port().bind(listener.handle(), &myEngine);
-            myEngine.completion_port().bind(stream.handle(), &myEngine);
+            myEngine.bind(listener);
+            myEngine.bind(stream);
 
             // Wait for the client to connect.
             cz::Promise promise = myEngine.accept(listener, stream);
@@ -90,6 +93,9 @@ namespace {
         }
     };
 
+    /*!
+     * @brief Task that establishes @e one outgoing connection.
+     */
     class TCPClient
         : public cz::Task
     {
@@ -108,7 +114,7 @@ namespace {
         virtual void run ()
         {
             w32::net::tcp::Stream stream;
-            myEngine.completion_port().bind(stream.handle(), &myEngine);
+            myEngine.bind(stream);
 
             // Connect to the server.
             cz::Promise promise = myEngine.connect(stream, myPeer);
@@ -168,6 +174,10 @@ namespace {
         }
     };
 
+    /*!
+     * @test Asynchronous TCP client & server sockets are interoperable.
+     * @return Non-zero on failure, zero on success.
+     */
     int test_socket_accept ()
     {
         cz::Hub hub;
@@ -183,17 +193,11 @@ namespace {
         TCPClient client(engine, endpoint);
         hub.spawn(client, cz::Hub::StartNow);
 
-        // Unblock both the client and the server.
-        engine.wait_for_notification();
-        hub.resume_pending_slave();
-        engine.wait_for_notification();
-        hub.resume_pending_slave();
-        engine.wait_for_notification();
-        hub.resume_pending_slave();
-        engine.wait_for_notification();
-        hub.resume_pending_slave();
-        engine.wait_for_notification();
-        hub.resume_pending_slave();
+        // Wait until both tasks complete.
+        while (!server.dead() || !client.dead()) {
+            engine.wait_for_notification();
+            hub.resume_pending_slave();
+        }
 
         // Make sure the hub closes successfully to avoid suprises when
         // destroying it.

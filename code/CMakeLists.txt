@@ -28,24 +28,14 @@ set(cz_headers
   Buffer.hpp
   Computation.hpp
   Engine.hpp
-  FileReader.hpp
-  FileWriter.hpp
   Hub.hpp
-  Listener.hpp
-  SocketChannel.hpp
-  Stream.hpp
   Promise.hpp
 )
 set(cz_sources
   Buffer.cpp
   Computation.cpp
   Engine.cpp
-  FileReader.cpp
-  FileWriter.cpp
   Hub.cpp
-  Listener.cpp
-  SocketChannel.cpp
-  Stream.cpp
   Promise.cpp
 )
 set(cz_libraries

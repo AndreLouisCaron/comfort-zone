@@ -27,6 +27,7 @@
 
 #include "Promise.hpp"
 #include "Hub.hpp"
+#include "Engine.hpp"
 
 
 #define debug_when(condition) cz_debug_when(condition)
@@ -91,12 +92,51 @@ namespace cz {
         return (*this);
     }
 
+    bool Promise::forget ()
+    {
+        if (state() != Promise::Busy) {
+            // TODO: throw!
+        }
+
+        // Cancellation may not be supported.  In that case, the task must wait
+        // for the operation to complete.
+        if (myData->cancel == 0) {
+            return (false);
+        }
+
+        // Cancellation may be asynchronous.  In that case, the task must wait
+        // for a completion notification, which may confirm successfull
+        // cancellation or a proper completion (e.g. if the operation has
+        // already completed and completion notification is already queued).
+        if (!(myData->cancel)(myData)) {
+            return (false);
+        }
+
+        // The cancellation was successful and the promise implementation
+        // reported that we will not be receiving a completion notification.
+        // In that case, we must settle the promise right away.
+        if (myData->state == Promise::Busy) {
+            myData->state = Promise::Dead;
+        }
+        return (true);
+    }
+
     Promise::State Promise::state () const
     {
         if (!myData) {
             return (Null);
         }
         return (myData->state);
+    }
+
+    w32::io::CompletionPort& Promise::completion_port (Engine& engine)
+    {
+        return (engine.myCompletionPort);
+    }
+
+    w32::tp::Queue& Promise::thread_pool_queue (Engine& engine)
+    {
+        return (engine.myThreadPoolQueue);
     }
 
     Promise& Promise::operator= (const Promise& rhs)
@@ -117,6 +157,16 @@ namespace cz {
         this->completion_status = NO_ERROR;
         this->completion_result = MAXDWORD;
         this->cleanup = &destroy<Promise::Data>;
+    }
+
+    w32::io::CompletionPort& Promise::Data::completion_port (Engine& engine)
+    {
+        return (Promise::completion_port(engine));
+    }
+
+    w32::tp::Queue& Promise::Data::thread_pool_queue (Engine& engine)
+    {
+        return (engine.myThreadPoolQueue);
     }
 
     Promise::Set::Set ()
